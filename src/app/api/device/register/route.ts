@@ -11,9 +11,9 @@ const registerSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  // Rate-limit register to 10 per hour per IP
+  // Rate-limit register to 60 per hour per IP for development
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0] || '127.0.0.1';
-  const rateLimit = checkRateLimit(`register:${ip}`, 10, 3600 * 1000);
+  const rateLimit = checkRateLimit(`register:${ip}`, 60, 3600 * 1000);
   if (!rateLimit.allowed) {
     return NextResponse.json(
       { error: 'rate_limited' },

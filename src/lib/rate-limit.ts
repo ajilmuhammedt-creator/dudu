@@ -29,3 +29,11 @@ export function checkRateLimit(key: string, limit: number, windowMs: number): { 
   record.count += 1;
   return { allowed: true, remaining: limit - record.count, resetInSec: Math.ceil((record.resetAt - now) / 1000) };
 }
+
+/**
+ * Resets all rate limit records in memory
+ */
+export function resetRateLimits(): void {
+  memoryStore.clear();
+}
+
