@@ -1,0 +1,50 @@
+{
+  "name": "edubuddy-parent",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "test": "vitest run",
+    "robot": "tsx scripts/fake-robot.ts",
+    "seed": "tsx scripts/seed.ts"
+  },
+  "dependencies": {
+    "@react-pdf/renderer": "^4.9.0",
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.119.2",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.4.0",
+    "lucide-react": "^1.77.0",
+    "next": "15.5.29",
+    "pg": "^8.23.1",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "recharts": "^3.11.0",
+    "tailwind-merge": "^3.7.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^6.3.0",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.29",
+    "tailwindcss": "^4",
+    "tsx": "^4.23.15",
+    "typescript": "^5",
+    "vitest": "^5.1.1"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "@react-pdf/renderer"
+    ]
+  }
+}
