@@ -4,10 +4,7 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  serverExternalPackages: ['@react-pdf/renderer', 'pdfkit'],
-  outputFileTracingIncludes: {
-    '/api/report/pdf': ['./node_modules/**/*.cjs', './node_modules/**/*.afm'],
-  },
+  serverExternalPackages: ['@react-pdf/renderer'],
 };
 
 export default nextConfig;
