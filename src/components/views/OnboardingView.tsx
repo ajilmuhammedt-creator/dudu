@@ -100,7 +100,7 @@ export function OnboardingView({ onComplete }: OnboardingViewProps) {
               <div className="font-mono text-3xl font-extrabold tracking-widest text-[#F26B1D] py-1">
                 483 921
               </div>
-              <div className="text-[10px] text-white/50">Device EB-QAI96T · Wi-Fi connected</div>
+              <div className="text-[10px] text-white/50">Device DUDU-90932C9FC114 · Wi-Fi connected</div>
             </div>
           </div>
 

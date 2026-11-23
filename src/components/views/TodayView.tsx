@@ -1,8 +1,9 @@
 // src/components/views/TodayView.tsx
 'use client';
 
-import React from 'react';
-import { Clock, Award, Coffee, AlertCircle, ChevronRight, Camera, BookOpen, PenTool } from 'lucide-react';
+import React, { useState } from 'react';
+import { Clock, Award, Coffee, AlertCircle, ChevronRight, Camera, BookOpen, PenTool, Cpu } from 'lucide-react';
+import { PairRobotModal } from '../modals/PairRobotModal';
 
 interface TodayViewProps {
   onNavigateTab: (tab: string) => void;
@@ -10,12 +11,21 @@ interface TodayViewProps {
 }
 
 export function TodayView({ onNavigateTab, onOpenSession }: TodayViewProps) {
+  const [showPairModal, setShowPairModal] = useState(false);
   return (
     <div className="space-y-6 pb-20 md:pb-8">
       {/* Date Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-[#1F2328]">Today, Tuesday</h1>
-        <p className="text-sm text-[#6B7280]">CBSE Class 3 · Mathematics, EVS</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-[#1F2328]">Today, Tuesday</h1>
+          <p className="text-sm text-[#6B7280]">CBSE Class 3 · Mathematics, EVS</p>
+        </div>
+        <button
+          onClick={() => setShowPairModal(true)}
+          className="btn btn-secondary text-xs px-3 py-1.5 flex items-center gap-1.5 shadow-sm border-[#ECE7DE] hover:border-[#F26B1D]/40 text-[#1F2328]"
+        >
+          <Cpu className="w-3.5 h-3.5 text-[#F26B1D]" /> Pair a robot
+        </button>
       </div>
 
       {/* 3 Stat Tiles */}
@@ -148,6 +158,12 @@ export function TodayView({ onNavigateTab, onOpenSession }: TodayViewProps) {
           </div>
         </div>
       </div>
+
+      {/* Pair Robot Modal */}
+      <PairRobotModal
+        isOpen={showPairModal}
+        onClose={() => setShowPairModal(false)}
+      />
     </div>
   );
 }

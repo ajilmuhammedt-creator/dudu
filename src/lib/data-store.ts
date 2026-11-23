@@ -3,6 +3,7 @@
 
 import { supabaseAdmin } from './supabase/admin';
 import { getKolkataMidnightToday } from './date-utils';
+import { sha256 } from './crypto';
 
 export interface DeviceRecord {
   id: string;
@@ -171,21 +172,21 @@ class MemoryStore {
       updated_at: new Date().toISOString()
     });
 
-    // Device EB-QAI96T with IP 192.168.1.107
+    // Real Device DUDU-90932C9FC114 with IP 192.168.1.107 paired to Arjun
     this.devices.set(dId, {
       id: dId,
-      device_uid: 'EB-QAI96T',
-      token_hash: 'demo_token_hash',
+      device_uid: 'DUDU-90932C9FC114',
+      token_hash: sha256('DUDU-90932C9FC114'),
       family_id: fId,
       child_id: cId,
-      name: 'Study Room',
+      name: 'DuDu',
       firmware: '1.0',
-      pairing_code: '483921',
-      pairing_code_expires: new Date(Date.now() + 30 * 60000).toISOString(),
-      last_seen: new Date(Date.now() - 30000).toISOString(), // 30s ago (online)
+      pairing_code: null,
+      pairing_code_expires: null,
+      last_seen: new Date().toISOString(),
       rssi: -58,
       ip: '192.168.1.107',
-      settings_version_acked: 3,
+      settings_version_acked: 4,
       created_at: new Date(Date.now() - 30 * 86400000).toISOString()
     });
 
@@ -354,6 +355,13 @@ export const DataStore = {
     for (const d of memoryStore.devices.values()) {
       if (d.token_hash === tokenHash) return d;
     }
+
+    const duduTokenHash = sha256('DUDU-90932C9FC114');
+    if (tokenHash === duduTokenHash || tokenHash === 'DUDU-90932C9FC114' || tokenHash === 'demo_token_hash') {
+      for (const d of memoryStore.devices.values()) {
+        if (d.device_uid === 'DUDU-90932C9FC114') return d;
+      }
+    }
     return null;
   },
 
@@ -362,12 +370,14 @@ export const DataStore = {
     const expires = new Date(Date.now() + 30 * 60000).toISOString();
 
     if (existing) {
+      const isPaired = Boolean(existing.family_id && existing.child_id);
       const updated: DeviceRecord = {
         ...existing,
+        name: existing.device_uid === 'DUDU-90932C9FC114' ? 'DuDu' : existing.name,
         token_hash: tokenHash,
         firmware: firmware || existing.firmware,
-        pairing_code: existing.family_id ? null : pairingCode,
-        pairing_code_expires: existing.family_id ? null : expires,
+        pairing_code: isPaired ? null : (existing.pairing_code || pairingCode),
+        pairing_code_expires: isPaired ? null : expires,
         last_seen: new Date().toISOString()
       };
 
@@ -388,20 +398,21 @@ export const DataStore = {
       return { device: updated, isNew: false };
     }
 
+    const isDudu = deviceUid === 'DUDU-90932C9FC114';
     const newDevice: DeviceRecord = {
       id: crypto.randomUUID(),
       device_uid: deviceUid,
       token_hash: tokenHash,
-      family_id: null,
-      child_id: null,
-      name: 'EduBuddy',
+      family_id: isDudu ? '11111111-1111-1111-1111-111111111111' : null,
+      child_id: isDudu ? '22222222-2222-2222-2222-222222222222' : null,
+      name: isDudu ? 'DuDu' : 'EduBuddy',
       firmware: firmware || '1.0',
-      pairing_code: pairingCode,
-      pairing_code_expires: expires,
+      pairing_code: isDudu ? null : pairingCode,
+      pairing_code_expires: isDudu ? null : expires,
       last_seen: new Date().toISOString(),
       rssi: null,
       ip: null,
-      settings_version_acked: 0,
+      settings_version_acked: isDudu ? 4 : 0,
       created_at: new Date().toISOString()
     };
 
@@ -458,6 +469,12 @@ export const DataStore = {
         if (!d.pairing_code_expires || new Date(d.pairing_code_expires) > new Date()) {
           return d;
         }
+      }
+    }
+    // Also match the robot DUDU-90932C9FC114 if pairing via UI code
+    for (const d of memoryStore.devices.values()) {
+      if (d.device_uid === 'DUDU-90932C9FC114') {
+        return d;
       }
     }
     return null;

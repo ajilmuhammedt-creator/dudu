@@ -2,14 +2,16 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Cpu, Wifi, MessageSquare, Unlink, Check, Volume2, Edit2 } from 'lucide-react';
+import { Cpu, Wifi, MessageSquare, Unlink, Check, Volume2, Edit2, Plus } from 'lucide-react';
+import { PairRobotModal } from '../modals/PairRobotModal';
 
 export function DevicesView() {
   const [sayText, setSayText] = useState('');
   const [showSayModal, setShowSayModal] = useState(false);
   const [showUnpairModal, setShowUnpairModal] = useState(false);
+  const [showPairModal, setShowPairModal] = useState(false);
   const [sayStatus, setSayStatus] = useState<string | null>(null);
-  const [deviceName, setDeviceName] = useState('Study Room');
+  const [deviceName, setDeviceName] = useState('DuDu');
   const [isEditingName, setIsEditingName] = useState(false);
   const [isUnpaired, setIsUnpaired] = useState(false);
 
@@ -51,11 +53,19 @@ export function DevicesView() {
   return (
     <div className="max-w-xl mx-auto space-y-6 pb-24 md:pb-8">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-[#1F2328]">Connected Devices</h1>
-        <p className="text-sm text-[#6B7280]">
-          Manage DuDu desk robots paired to your family
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-[#1F2328]">Connected Devices</h1>
+          <p className="text-sm text-[#6B7280]">
+            Manage DuDu desk robots paired to your family
+          </p>
+        </div>
+        <button
+          onClick={() => setShowPairModal(true)}
+          className="btn btn-primary text-xs px-3.5 py-2 flex items-center gap-1.5 shadow-sm"
+        >
+          <Plus className="w-4 h-4" /> Pair a robot
+        </button>
       </div>
 
       {isUnpaired ? (
@@ -68,7 +78,7 @@ export function DevicesView() {
             The robot was unpaired. To link it again, enter the 6-digit code shown on the robot screen.
           </p>
           <button
-            onClick={() => setIsUnpaired(false)}
+            onClick={() => setShowPairModal(true)}
             className="btn btn-primary text-xs px-4"
           >
             Pair a robot
@@ -105,7 +115,7 @@ export function DevicesView() {
                     </h2>
                   )}
                   <span className="text-[10px] bg-[#ECE7DE] text-[#6B7280] font-mono px-2 py-0.5 rounded">
-                    EB-QAI96T
+                    DUDU-90932C9FC114
                   </span>
                 </div>
                 <div className="text-xs text-[#6B7280] mt-0.5">
@@ -232,6 +242,15 @@ export function DevicesView() {
           </div>
         </div>
       )}
+      {/* Pair Robot Modal */}
+      <PairRobotModal
+        isOpen={showPairModal}
+        onClose={() => setShowPairModal(false)}
+        onSuccess={() => {
+          setIsUnpaired(false);
+          setDeviceName('DuDu');
+        }}
+      />
     </div>
   );
 }

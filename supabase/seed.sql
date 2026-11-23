@@ -51,9 +51,11 @@ BEGIN
         id, device_uid, token_hash, family_id, child_id, name, firmware,
         pairing_code, pairing_code_expires, last_seen, rssi, ip, settings_version_acked, created_at
     ) VALUES (
-        d_id, 'EB-QAI96T', v_token_hash, f_id, c_id, 'Study Room', '1.0',
-        '483921', now() + INTERVAL '30 minutes', now() - INTERVAL '45 seconds', -58, '192.168.1.107', 3, now() - INTERVAL '30 days'
+        d_id, 'DUDU-90932C9FC114', v_token_hash, f_id, c_id, 'DuDu', '1.0',
+        null, null, now() - INTERVAL '45 seconds', -58, '192.168.1.107', 4, now() - INTERVAL '30 days'
     ) ON CONFLICT (id) DO UPDATE SET
+        device_uid = EXCLUDED.device_uid,
+        name = EXCLUDED.name,
         ip = EXCLUDED.ip,
         last_seen = EXCLUDED.last_seen;
 
