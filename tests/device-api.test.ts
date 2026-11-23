@@ -3,6 +3,9 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { POST as registerHandler } from '../src/app/api/device/register/route';
 import { POST as syncHandler } from '../src/app/api/device/sync/route';
 import { POST as sessionHandler } from '../src/app/api/device/session/route';
+import { POST as unpairHandler } from '../src/app/api/unpair/route';
+import { POST as pairHandler } from '../src/app/api/pair/route';
+import { GET as statusHandler } from '../src/app/api/device/status/route';
 import { NextRequest } from 'next/server';
 import { DataStore } from '../src/lib/data-store';
 import { sha256 } from '../src/lib/crypto';
@@ -169,5 +172,68 @@ describe('Device API Contract Tests', () => {
     const data = await res.json();
     expect(data).toHaveProperty('session_id');
     expect(data.needs_review).toBe(1); // 1 item flagged with <0.8 confidence
+  });
+
+  it('6. Full cycle: unpair → sync gets paired:false with code → pair with code → sync gets paired:true', async () => {
+    // A. Unpair device
+    const unpairReq = new NextRequest('http://localhost:3000/api/unpair', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device_id: '33333333-3333-3333-3333-333333333333' })
+    });
+    const unpairRes = await unpairHandler(unpairReq);
+    expect(unpairRes.status).toBe(200);
+
+    // Verify status returns paired: false
+    const statusRes = await statusHandler();
+    const statusData = await statusRes.json();
+    expect(statusData.paired).toBe(false);
+
+    // B. Robot syncs after unpair -> receives paired: false with 6-digit pairing_code
+    const syncReq1 = new NextRequest('http://localhost:3000/api/device/sync', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer DUDU-90932C9FC114'
+      },
+      body: JSON.stringify({ firmware: '1.0' })
+    });
+    const syncRes1 = await syncHandler(syncReq1);
+    expect(syncRes1.status).toBe(200);
+    const syncData1 = await syncRes1.json();
+    expect(syncData1.paired).toBe(false);
+    expect(syncData1.pairing_code).toMatch(/^\d{6}$/);
+
+    const robotCode = syncData1.pairing_code;
+
+    // C. Pair using that code from "Pair a robot" modal
+    const pairReq = new NextRequest('http://localhost:3000/api/pair', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code: robotCode,
+        child_id: '22222222-2222-2222-2222-222222222222'
+      })
+    });
+    const pairRes = await pairHandler(pairReq);
+    expect(pairRes.status).toBe(200);
+    const pairData = await pairRes.json();
+    expect(pairData.success).toBe(true);
+
+    // D. Robot syncs again -> receives paired: true with Arjun's settings
+    const syncReq2 = new NextRequest('http://localhost:3000/api/device/sync', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer DUDU-90932C9FC114'
+      },
+      body: JSON.stringify({ firmware: '1.0' })
+    });
+    const syncRes2 = await syncHandler(syncReq2);
+    expect(syncRes2.status).toBe(200);
+    const syncData2 = await syncRes2.json();
+    expect(syncData2.paired).toBe(true);
+    expect(syncData2.child_name).toBe('Arjun');
+    expect(syncData2.child_class).toBe(3);
   });
 });

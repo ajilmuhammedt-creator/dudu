@@ -335,11 +335,97 @@ class MemoryStore {
 
 const memoryStore = new MemoryStore();
 
+const STATE_BUCKET = 'dudu-state';
+const STATE_OBJECT = 'device-state.json';
+const LOCAL_STATE_FILE = '/tmp/dudu-device-state.json';
+
+let stateInitialized = false;
+let lastSyncTime = 0;
+
+async function ensureStateLoaded(): Promise<void> {
+  const now = Date.now();
+  if (stateInitialized && now - lastSyncTime < 2000) {
+    return;
+  }
+
+  // 1. Try local file cache (instant)
+  try {
+    const fs = await import('fs');
+    if (fs.existsSync(LOCAL_STATE_FILE)) {
+      const content = fs.readFileSync(LOCAL_STATE_FILE, 'utf-8');
+      const data = JSON.parse(content);
+      if (Array.isArray(data.devices)) {
+        for (const d of data.devices) {
+          memoryStore.devices.set(d.id, d);
+        }
+      }
+      if (Array.isArray(data.commands)) {
+        memoryStore.commands = data.commands;
+      }
+      stateInitialized = true;
+      lastSyncTime = now;
+      return;
+    }
+  } catch {}
+
+  // 2. Try Supabase storage bucket
+  try {
+    const { data, error } = await supabaseAdmin.storage.from(STATE_BUCKET).download(STATE_OBJECT);
+    if (!error && data) {
+      const text = await data.text();
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed.devices)) {
+        for (const d of parsed.devices) {
+          memoryStore.devices.set(d.id, d);
+        }
+      }
+      if (Array.isArray(parsed.commands)) {
+        memoryStore.commands = parsed.commands;
+      }
+      stateInitialized = true;
+      lastSyncTime = now;
+
+      try {
+        const fs = await import('fs');
+        fs.writeFileSync(LOCAL_STATE_FILE, text, 'utf-8');
+      } catch {}
+      return;
+    }
+  } catch {}
+
+  stateInitialized = true;
+  lastSyncTime = now;
+}
+
+async function persistState(): Promise<void> {
+  const payload = {
+    devices: Array.from(memoryStore.devices.values()),
+    commands: memoryStore.commands,
+    updated_at: new Date().toISOString()
+  };
+  const str = JSON.stringify(payload, null, 2);
+
+  try {
+    const fs = await import('fs');
+    fs.writeFileSync(LOCAL_STATE_FILE, str, 'utf-8');
+  } catch {}
+
+  try {
+    await supabaseAdmin.storage.from(STATE_BUCKET).upload(STATE_OBJECT, Buffer.from(str), {
+      upsert: true,
+      contentType: 'application/json'
+    });
+  } catch {}
+
+  lastSyncTime = Date.now();
+}
+
 /**
  * DataStore interface querying Supabase when available, falling back to memory store
  */
 export const DataStore = {
   async getDeviceByTokenHash(tokenHash: string): Promise<DeviceRecord | null> {
+    await ensureStateLoaded();
     try {
       const { data, error } = await supabaseAdmin
         .from('devices')
@@ -366,6 +452,7 @@ export const DataStore = {
   },
 
   async registerDevice(deviceUid: string, firmware: string, tokenHash: string, pairingCode: string): Promise<{ device: DeviceRecord; isNew: boolean }> {
+    await ensureStateLoaded();
     const existing = await this.getDeviceByUid(deviceUid);
     const expires = new Date(Date.now() + 30 * 60000).toISOString();
 
@@ -395,24 +482,24 @@ export const DataStore = {
       } catch {}
 
       memoryStore.devices.set(existing.id, updated);
+      await persistState();
       return { device: updated, isNew: false };
     }
 
-    const isDudu = deviceUid === 'DUDU-90932C9FC114';
     const newDevice: DeviceRecord = {
       id: crypto.randomUUID(),
       device_uid: deviceUid,
       token_hash: tokenHash,
-      family_id: isDudu ? '11111111-1111-1111-1111-111111111111' : null,
-      child_id: isDudu ? '22222222-2222-2222-2222-222222222222' : null,
-      name: isDudu ? 'DuDu' : 'EduBuddy',
+      family_id: null,
+      child_id: null,
+      name: deviceUid === 'DUDU-90932C9FC114' ? 'DuDu' : 'EduBuddy',
       firmware: firmware || '1.0',
-      pairing_code: isDudu ? null : pairingCode,
-      pairing_code_expires: isDudu ? null : expires,
+      pairing_code: pairingCode,
+      pairing_code_expires: expires,
       last_seen: new Date().toISOString(),
       rssi: null,
       ip: null,
-      settings_version_acked: isDudu ? 4 : 0,
+      settings_version_acked: 0,
       created_at: new Date().toISOString()
     };
 
@@ -421,10 +508,12 @@ export const DataStore = {
     } catch {}
 
     memoryStore.devices.set(newDevice.id, newDevice);
+    await persistState();
     return { device: newDevice, isNew: true };
   },
 
   async getDeviceByUid(deviceUid: string): Promise<DeviceRecord | null> {
+    await ensureStateLoaded();
     try {
       const { data, error } = await supabaseAdmin
         .from('devices')
@@ -441,6 +530,7 @@ export const DataStore = {
   },
 
   async getDeviceById(id: string): Promise<DeviceRecord | null> {
+    await ensureStateLoaded();
     try {
       const { data, error } = await supabaseAdmin
         .from('devices')
@@ -454,6 +544,7 @@ export const DataStore = {
   },
 
   async getDeviceByPairingCode(code: string): Promise<DeviceRecord | null> {
+    await ensureStateLoaded();
     try {
       const { data, error } = await supabaseAdmin
         .from('devices')
@@ -471,17 +562,12 @@ export const DataStore = {
         }
       }
     }
-    // Also match the robot DUDU-90932C9FC114 if pairing via UI code
-    for (const d of memoryStore.devices.values()) {
-      if (d.device_uid === 'DUDU-90932C9FC114') {
-        return d;
-      }
-    }
     return null;
   },
 
   async pairDevice(deviceId: string, familyId: string, childId: string): Promise<DeviceRecord> {
-    const d = memoryStore.devices.get(deviceId);
+    await ensureStateLoaded();
+    const d = memoryStore.devices.get(deviceId) || (await this.getDeviceByUid('DUDU-90932C9FC114'));
     if (!d) throw new Error('Device not found');
 
     const updated: DeviceRecord = {
@@ -501,31 +587,41 @@ export const DataStore = {
           pairing_code: null,
           pairing_code_expires: null
         })
-        .eq('id', deviceId);
+        .eq('id', d.id);
     } catch {}
 
-    memoryStore.devices.set(deviceId, updated);
+    memoryStore.devices.set(d.id, updated);
+    await persistState();
     return updated;
   },
 
   async unpairDevice(deviceId: string): Promise<DeviceRecord> {
-    const d = memoryStore.devices.get(deviceId);
+    await ensureStateLoaded();
+    const d = memoryStore.devices.get(deviceId) || (await this.getDeviceByUid('DUDU-90932C9FC114'));
     if (!d) throw new Error('Device not found');
 
     const updated: DeviceRecord = {
       ...d,
       family_id: null,
-      child_id: null
+      child_id: null,
+      pairing_code: null,
+      pairing_code_expires: null
     };
 
     try {
       await supabaseAdmin
         .from('devices')
-        .update({ family_id: null, child_id: null })
-        .eq('id', deviceId);
+        .update({
+          family_id: null,
+          child_id: null,
+          pairing_code: null,
+          pairing_code_expires: null
+        })
+        .eq('id', d.id);
     } catch {}
 
-    memoryStore.devices.set(deviceId, updated);
+    memoryStore.devices.set(d.id, updated);
+    await persistState();
     return updated;
   },
 
@@ -540,7 +636,8 @@ export const DataStore = {
       pairing_code_expires?: string;
     }
   ): Promise<DeviceRecord> {
-    const d = memoryStore.devices.get(deviceId);
+    await ensureStateLoaded();
+    const d = memoryStore.devices.get(deviceId) || (await this.getDeviceByUid('DUDU-90932C9FC114'));
     if (!d) throw new Error('Device not found');
 
     const updated: DeviceRecord = {
@@ -566,10 +663,11 @@ export const DataStore = {
           pairing_code_expires: updated.pairing_code_expires,
           last_seen: updated.last_seen
         })
-        .eq('id', deviceId);
+        .eq('id', d.id);
     } catch {}
 
-    memoryStore.devices.set(deviceId, updated);
+    memoryStore.devices.set(d.id, updated);
+    await persistState();
     return updated;
   },
 
@@ -662,6 +760,7 @@ export const DataStore = {
   },
 
   async getOldestPendingCommand(deviceId: string): Promise<CommandRecord | null> {
+    await ensureStateLoaded();
     const now = Date.now();
     const expiryThreshold = now - 24 * 3600 * 1000;
 
@@ -673,6 +772,7 @@ export const DataStore = {
           continue;
         }
         cmd.status = 'sent';
+        await persistState();
         return cmd;
       }
     }
@@ -716,6 +816,8 @@ export const DataStore = {
         .update({ status: 'done', acked_at: new Date().toISOString() })
         .eq('id', cmdId);
     } catch {}
+
+    await persistState();
   },
 
   async createCommand(deviceId: string, type: 'say' | 'practice' | 'rewrite' | 'unpair' | 'refresh', arg: string, createdBy?: string): Promise<CommandRecord> {
@@ -743,9 +845,12 @@ export const DataStore = {
         })
         .select()
         .single();
-      if (data) return data as CommandRecord;
+      if (data) {
+        cmd.id = data.id;
+      }
     } catch {}
 
+    await persistState();
     return cmd;
   },
 

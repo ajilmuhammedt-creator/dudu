@@ -1,8 +1,8 @@
 // src/components/views/DevicesView.tsx
 'use client';
 
-import React, { useState } from 'react';
-import { Cpu, Wifi, MessageSquare, Unlink, Check, Volume2, Edit2, Plus } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Cpu, Wifi, MessageSquare, Unlink, Check, Volume2, Edit2, Plus, Loader2 } from 'lucide-react';
 import { PairRobotModal } from '../modals/PairRobotModal';
 
 export function DevicesView() {
@@ -14,6 +14,26 @@ export function DevicesView() {
   const [deviceName, setDeviceName] = useState('DuDu');
   const [isEditingName, setIsEditingName] = useState(false);
   const [isUnpaired, setIsUnpaired] = useState(false);
+  const [deviceData, setDeviceData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchDevice = async () => {
+    try {
+      const res = await fetch('/api/device/status');
+      if (res.ok) {
+        const data = await res.json();
+        setDeviceData(data);
+        setIsUnpaired(!data.paired);
+        if (data.name) setDeviceName(data.name);
+      }
+    } catch {} finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDevice();
+  }, []);
 
   const handleSaySubmit = async () => {
     if (!sayText.trim() || sayText.length > 120) return;
@@ -22,7 +42,7 @@ export function DevicesView() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          device_id: '33333333-3333-3333-3333-333333333333',
+          device_id: deviceData?.id || '33333333-3333-3333-3333-333333333333',
           type: 'say',
           arg: sayText
         })
@@ -42,11 +62,12 @@ export function DevicesView() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          device_id: '33333333-3333-3333-3333-333333333333'
+          device_id: deviceData?.id || '33333333-3333-3333-3333-333333333333'
         })
       });
       setIsUnpaired(true);
       setShowUnpairModal(false);
+      await fetchDevice();
     } catch {}
   };
 
@@ -246,9 +267,9 @@ export function DevicesView() {
       <PairRobotModal
         isOpen={showPairModal}
         onClose={() => setShowPairModal(false)}
-        onSuccess={() => {
+        onSuccess={async () => {
           setIsUnpaired(false);
-          setDeviceName('DuDu');
+          await fetchDevice();
         }}
       />
     </div>

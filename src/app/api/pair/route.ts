@@ -6,7 +6,7 @@ import { DataStore } from '@/lib/data-store';
 
 const pairSchema = z.object({
   code: z.string().transform((v) => v.replace(/\s+/g, '')),
-  child_id: z.string().uuid()
+  child_id: z.string().min(1)
 });
 
 export async function POST(req: NextRequest) {
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   const parsed = pairSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: 'invalid_input', message: 'Please enter a valid 6-digit code.' },
+      { error: 'invalid_input', message: 'Please enter a valid 6-digit code.', details: parsed.error.issues },
       { status: 400 }
     );
   }
