@@ -6,6 +6,7 @@ import { POST as sessionHandler } from '../src/app/api/device/session/route';
 import { POST as unpairHandler } from '../src/app/api/unpair/route';
 import { POST as pairHandler } from '../src/app/api/pair/route';
 import { POST as controlsHandler } from '../src/app/api/controls/route';
+import { GET as dashboardHandler } from '../src/app/api/dashboard/route';
 import { GET as statusHandler } from '../src/app/api/device/status/route';
 import { NextRequest } from 'next/server';
 import { DataStore } from '../src/lib/data-store';
@@ -239,9 +240,24 @@ describe('Device API Contract Tests', () => {
   });
 
   it('7. POST /api/controls & sync - updates and propagates themes to device', async () => {
-    const controlsReq = new NextRequest('http://localhost:3000/api/controls', {
+    // Without auth -> 401
+    const unauthReq = new NextRequest('http://localhost:3000/api/controls', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        child_id: '22222222-2222-2222-2222-222222222222',
+        theme: 'dark'
+      })
+    });
+    const unauthRes = await controlsHandler(unauthReq);
+    expect(unauthRes.status).toBe(401);
+
+    const controlsReq = new NextRequest('http://localhost:3000/api/controls', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer demo-parent-sharma'
+      },
       body: JSON.stringify({
         child_id: '22222222-2222-2222-2222-222222222222',
         theme: 'dark',
@@ -261,12 +277,65 @@ describe('Device API Contract Tests', () => {
         'Content-Type': 'application/json',
         Authorization: 'Bearer DUDU-90932C9FC114'
       },
-      body: JSON.stringify({ firmware: '1.0' })
+      body: JSON.stringify({ firmware: '1.0', rssi: -39 })
     });
     const syncRes = await syncHandler(syncReq);
     expect(syncRes.status).toBe(200);
     const syncData = await syncRes.json();
     expect(syncData.paired).toBe(true);
     expect(syncData.robot_theme).toBe('night');
+  });
+
+  it('8. Attention & sleepiness report - /api/device/session stores fields & /api/dashboard returns them', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const sessionReq = new NextRequest('http://localhost:3000/api/device/session', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${unpairedToken}`
+      },
+      body: JSON.stringify({
+        mode: 'learn',
+        subject: 'Social Science',
+        chapter: 'Our Earth',
+        started_at: now - 600,
+        ended_at: now,
+        minutes: 10,
+        questions: 5,
+        answered_right: 4,
+        off_topic: 2,
+        camera_used: true,
+        watch_checks: 24,
+        watch_moving: 19,
+        active_pct: 79,
+        sleepy_checks: 1,
+        sleepy_yes: 1,
+        sleepy_no_answer: 0,
+        distractions: 3,
+        events: [
+          { type: 'off_topic', at: now - 400 },
+          { type: 'sleepy_check', at: now - 200 },
+          { type: 'sleepy_yes', at: now - 190 }
+        ]
+      })
+    });
+    const sessionRes = await sessionHandler(sessionReq);
+    expect(sessionRes.status).toBe(200);
+
+    const dashReq = new NextRequest('http://localhost:3000/api/dashboard?child_id=22222222-2222-2222-2222-222222222222', {
+      headers: { Authorization: 'Bearer demo-parent-sharma' }
+    });
+    const dashRes = await dashboardHandler(dashReq);
+    expect(dashRes.status).toBe(200);
+    const dashData = await dashRes.json();
+    const latest = dashData.sessions.find((s: any) => s.chapter === 'Our Earth');
+    expect(latest).toBeDefined();
+    expect(latest.watch_checks).toBe(24);
+    expect(latest.watch_moving).toBe(19);
+    expect(latest.active_pct).toBe(79);
+    expect(latest.sleepy_checks).toBe(1);
+    expect(latest.sleepy_yes).toBe(1);
+    expect(latest.distractions).toBe(3);
+    expect(latest.events.length).toBe(3);
   });
 });

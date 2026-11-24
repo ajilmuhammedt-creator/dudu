@@ -6,7 +6,6 @@ import {
   Download,
   Target,
   Sparkles,
-  ChevronRight,
   Camera,
   CameraOff,
   Check,
@@ -15,23 +14,60 @@ import {
   Clock,
   Award,
   AlertCircle,
-  Coffee,
-  FileText
+  Eye
 } from 'lucide-react';
+import { DashboardData } from '@/lib/dashboard-types';
 
 interface DesktopDashboardViewProps {
+  dashboard: DashboardData | null;
   onNavigateTab: (tab: string) => void;
   onOpenSession: (sessionId: string) => void;
   onDownloadPdf: () => void;
+  onRefresh?: () => void;
+}
+
+function formatKolkataDateTime(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      weekday: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
 }
 
 export function DesktopDashboardView({
+  dashboard,
   onNavigateTab,
   onOpenSession,
-  onDownloadPdf
+  onDownloadPdf,
+  onRefresh
 }: DesktopDashboardViewProps) {
   const [practiceDispatched, setPracticeDispatched] = useState(false);
-  const [reviewResolved, setReviewResolved] = useState(false);
+
+  const child = dashboard?.child || { name: 'Arjun', cbse_class: 3 };
+  const subjects = dashboard?.settings?.subjects?.join(', ') || 'No subjects configured';
+  const device = dashboard?.device;
+  const week = dashboard?.week || {
+    minutes: 0,
+    deltaMinutes: 0,
+    examsTaken: 0,
+    avgExamScore: null,
+    distractions: 0,
+    distractionsDelta: 0
+  };
+  const sessions = dashboard?.sessions || [];
+  const needsReviewGrades = dashboard?.needsReviewGrades || [];
+  const firstReview = needsReviewGrades[0] || null;
+  const subjectMastery = dashboard?.subjectMastery || [];
+
+  const hours = Math.floor(week.minutes / 60);
+  const mins = week.minutes % 60;
+  const weekTimeLabel = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
 
   const handleSetPractice = async () => {
     try {
@@ -39,9 +75,9 @@ export function DesktopDashboardView({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          device_id: '33333333-3333-3333-3333-333333333333',
+          device_id: device?.id || '33333333-3333-3333-3333-333333333333',
           type: 'practice',
-          arg: 'Give and Take (Ch 12): subtraction with borrowing'
+          arg: dashboard?.settings?.subjects?.[0] || 'Practice session'
         })
       });
       setPracticeDispatched(true);
@@ -49,17 +85,17 @@ export function DesktopDashboardView({
     } catch {}
   };
 
-  const handleInlineResolve = async (decision: 'correct' | 'wrong') => {
+  const handleInlineResolve = async (gradeId: string, decision: 'correct' | 'wrong') => {
     try {
       await fetch('/api/review', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          grade_id: '55555555-5555-5555-5555-555555555555',
+          grade_id: gradeId,
           decision
         })
       });
-      setReviewResolved(true);
+      onRefresh?.();
     } catch {}
   };
 
@@ -68,13 +104,29 @@ export function DesktopDashboardView({
       {/* Top Banner with Header & Main Action Buttons */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-[#1F2328] tracking-tight">Arjun — this week</h1>
-          <p className="text-sm text-[#6B7280] mt-1 flex items-center gap-2">
-            <span>CBSE Class 3 · Mathematics, EVS</span>
+          <h1 className="text-3xl font-bold text-[var(--text-primary)] tracking-tight">
+            {child.name} — this week
+          </h1>
+          <p className="text-sm text-[var(--text-muted)] mt-1 flex flex-wrap items-center gap-2">
+            <span>
+              CBSE Class {child.cbse_class} · {subjects}
+            </span>
             <span>·</span>
-            <span className="flex items-center gap-1.5 font-medium text-[#17A34A]">
-              <span className="w-2 h-2 rounded-full bg-[#17A34A] animate-pulse" />
-              EduBuddy “Study Room” online
+            <span
+              className={`flex items-center gap-1.5 font-medium ${
+                device?.online ? 'text-[var(--success-green)]' : 'text-[var(--text-muted)]'
+              }`}
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  device?.online ? 'bg-[var(--success-green)] animate-pulse' : 'bg-[var(--text-muted)]'
+                }`}
+              />
+              {device
+                ? `${device.name || 'DuDu'} (${device.device_uid}) ${
+                    device.online ? 'online' : 'offline'
+                  }${device.ip ? ` · ${device.ip}` : ''}`
+                : 'No robot paired'}
             </span>
           </p>
         </div>
@@ -84,7 +136,7 @@ export function DesktopDashboardView({
             onClick={onDownloadPdf}
             className="btn btn-secondary text-xs font-semibold px-4 gap-2 shadow-sm"
           >
-            <Download className="w-4 h-4 text-[#6B7280]" />
+            <Download className="w-4 h-4 text-[var(--text-muted)]" />
             <span>Download report (PDF)</span>
           </button>
 
@@ -109,330 +161,313 @@ export function DesktopDashboardView({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Study Time */}
         <div className="card p-5 shadow-sm">
-          <div className="text-xs font-semibold uppercase tracking-wider text-[#6B7280] mb-2 flex items-center justify-between">
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-2 flex items-center justify-between">
             <span>Study time</span>
-            <Clock className="w-4 h-4 text-[#1E6FE0]" />
+            <Clock className="w-4 h-4 text-[var(--study-blue)]" />
           </div>
           <div className="flex items-baseline gap-1.5">
-            <span className="text-3xl font-extrabold text-[#1F2328]">3h 10m</span>
+            <span className="text-3xl font-extrabold text-[var(--text-primary)]">{weekTimeLabel}</span>
           </div>
-          <div className="text-xs text-[#17A34A] font-semibold mt-1">
-            ▲ 40 min vs last week
+          <div className="text-xs text-[var(--text-muted)] font-medium mt-1">
+            {week.deltaMinutes >= 0
+              ? `▲ ${week.deltaMinutes} min vs last week`
+              : `▼ ${Math.abs(week.deltaMinutes)} min vs last week`}
           </div>
         </div>
 
         {/* Exams Taken */}
         <div className="card p-5 shadow-sm">
-          <div className="text-xs font-semibold uppercase tracking-wider text-[#6B7280] mb-2 flex items-center justify-between">
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-2 flex items-center justify-between">
             <span>Exams taken</span>
-            <Award className="w-4 h-4 text-[#F26B1D]" />
+            <Award className="w-4 h-4 text-[var(--brand-orange)]" />
           </div>
           <div className="flex items-baseline gap-1.5">
-            <span className="text-3xl font-extrabold text-[#1F2328]">6</span>
+            <span className="text-3xl font-extrabold text-[var(--text-primary)]">{week.examsTaken}</span>
           </div>
-          <div className="text-xs text-[#6B7280] font-medium mt-1">
-            avg score <strong className="text-[#1F2328]">82%</strong>
+          <div className="text-xs text-[var(--text-muted)] font-medium mt-1">
+            {week.avgExamScore !== null ? (
+              <>
+                avg score <strong className="text-[var(--text-primary)]">{week.avgExamScore}%</strong>
+              </>
+            ) : (
+              'No exams yet this week'
+            )}
           </div>
         </div>
 
         {/* Needs Your Check */}
         <div className="card p-5 shadow-sm">
-          <div className="text-xs font-semibold uppercase tracking-wider text-[#6B7280] mb-2 flex items-center justify-between">
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-2 flex items-center justify-between">
             <span>Needs your check</span>
-            <AlertCircle className="w-4 h-4 text-[#D8262B]" />
+            <AlertCircle className="w-4 h-4 text-[var(--error-red)]" />
           </div>
           <div className="flex items-baseline gap-1.5">
-            <span className="text-3xl font-extrabold text-[#1F2328]">
-              {reviewResolved ? '0' : '1'}
+            <span className="text-3xl font-extrabold text-[var(--text-primary)]">
+              {needsReviewGrades.length}
             </span>
           </div>
           <button
             onClick={() => onNavigateTab('review')}
-            className="text-xs text-[#F26B1D] font-semibold mt-1 hover:underline text-left block"
+            className="text-xs text-[var(--brand-orange)] font-semibold mt-1 hover:underline text-left block"
           >
-            {reviewResolved ? 'Review queue cleared' : 'Open review queue →'}
+            {needsReviewGrades.length === 0 ? 'Review queue clear' : 'Open review queue →'}
           </button>
         </div>
 
-        {/* Break Prompts */}
+        {/* Distractions this week */}
         <div className="card p-5 shadow-sm">
-          <div className="text-xs font-semibold uppercase tracking-wider text-[#6B7280] mb-2 flex items-center justify-between">
-            <span>Break prompts</span>
-            <Coffee className="w-4 h-4 text-[#B7791F]" />
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-2 flex items-center justify-between">
+            <span>Distractions this week</span>
+            <Eye className="w-4 h-4 text-[var(--warning-gold)]" />
           </div>
           <div className="flex items-baseline gap-1.5">
-            <span className="text-3xl font-extrabold text-[#1F2328]">2</span>
+            <span className="text-3xl font-extrabold text-[var(--text-primary)]">{week.distractions}</span>
           </div>
-          <div className="text-xs text-[#6B7280] mt-1">both after 6 pm</div>
+          <div className="text-xs text-[var(--text-muted)] font-medium mt-1">
+            {week.distractionsDelta >= 0
+              ? `▲ ${week.distractionsDelta} vs last week`
+              : `▼ ${Math.abs(week.distractionsDelta)} vs last week`}
+          </div>
         </div>
       </div>
 
-      {/* Main Grid: Left 2 Cols (Mastery + Sessions) & Right Rail (Review Queue + Device) */}
+      {/* Main 2-Column Content */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left 2 Cols */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Chapter Mastery Table */}
-          <div className="card p-5 space-y-4">
-            <div className="flex items-baseline justify-between">
-              <div>
-                <h2 className="text-base font-bold text-[#1F2328]">
-                  Chapter mastery · Mathematics
-                </h2>
-                <p className="text-xs text-[#6B7280]">
-                  Maths Mela, Class 3 · from 6 exams, 41 questions
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-3.5">
-              {/* House of Hundreds */}
-              <div>
-                <div className="flex justify-between text-xs font-semibold text-[#1F2328] mb-1">
-                  <span>House of Hundreds – II (Ch 9)</span>
-                  <span className="font-bold">92%</span>
-                </div>
-                <div className="w-full bg-[#ECE7DE] h-2 rounded-full overflow-hidden">
-                  <div className="bg-[#17A34A] h-full rounded-full" style={{ width: '92%' }} />
-                </div>
-              </div>
-
-              {/* Give and Take */}
-              <div>
-                <div className="flex justify-between text-xs font-semibold text-[#1F2328] mb-1">
-                  <span>Give and Take (Ch 12)</span>
-                  <span className="font-bold">88%</span>
-                </div>
-                <div className="w-full bg-[#ECE7DE] h-2 rounded-full overflow-hidden">
-                  <div className="bg-[#17A34A] h-full rounded-full" style={{ width: '88%' }} />
-                </div>
-              </div>
-
-              {/* Subtraction with Borrowing */}
-              <div>
-                <div className="flex justify-between text-xs font-semibold text-[#1F2328] mb-1">
-                  <span>Give and Take: subtraction with borrowing</span>
-                  <span className="font-bold text-[#D8262B]">55%</span>
-                </div>
-                <div className="w-full bg-[#ECE7DE] h-2 rounded-full overflow-hidden">
-                  <div className="bg-[#D8262B] h-full rounded-full" style={{ width: '55%' }} />
-                </div>
-              </div>
-
-              {/* Fun at Class Party */}
-              <div>
-                <div className="flex justify-between text-xs font-semibold text-[#1F2328] mb-1">
-                  <span>Fun at Class Party! (Ch 10)</span>
-                  <span className="font-bold">96%</span>
-                </div>
-                <div className="w-full bg-[#ECE7DE] h-2 rounded-full overflow-hidden">
-                  <div className="bg-[#17A34A] h-full rounded-full" style={{ width: '96%' }} />
-                </div>
-              </div>
-            </div>
-
-            {/* Weak-spot Insight Box */}
-            <div className="bg-[#FFF5ED] border border-[#F26B1D]/30 rounded-2xl p-4 flex items-start gap-3 mt-4">
-              <Sparkles className="w-4 h-4 text-[#F26B1D] shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <p className="text-xs text-[#1F2328] font-medium leading-relaxed">
-                  Subtraction with borrowing (Give and Take) is the weak spot — 3 of 5 wrong answers were a borrowing slip.
-                </p>
-              </div>
-              <button
-                onClick={handleSetPractice}
-                className="btn btn-primary text-xs px-3 py-1.5 shrink-0"
-              >
-                Set practice
-              </button>
+        {/* Left Column (2/3): Chapter Mastery */}
+        <div className="lg:col-span-2 card p-6 space-y-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-[var(--text-primary)]">
+                Chapter mastery · {subjects} (Class {child.cbse_class})
+              </h2>
+              <span className="text-xs text-[var(--text-muted)]">
+                from {sessions.length} recorded {sessions.length === 1 ? 'session' : 'sessions'}
+              </span>
             </div>
           </div>
 
-          {/* Sessions This Week Table */}
-          <div className="card p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-bold text-[#1F2328]">Sessions this week</h2>
-              <span className="text-xs text-[#6B7280]">6 total sessions</span>
+          {subjectMastery.length === 0 ? (
+            <div className="p-6 rounded-2xl bg-[var(--input-bg)] border border-[var(--border-card)] text-center space-y-1">
+              <div className="text-sm font-semibold text-[var(--text-primary)]">No mastery data yet</div>
+              <p className="text-xs text-[var(--text-muted)]">
+                Chapter mastery bars will appear once {child.name} completes an exam or scan session on DuDu.
+              </p>
             </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-[#ECE7DE] text-[#6B7280] font-semibold">
-                    <th className="pb-2.5">When</th>
-                    <th className="pb-2.5">Mode</th>
-                    <th className="pb-2.5">Topic</th>
-                    <th className="pb-2.5">Length</th>
-                    <th className="pb-2.5">Result</th>
-                    <th className="pb-2.5">Camera</th>
-                    <th className="pb-2.5 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#ECE7DE]">
-                  <tr className="hover:bg-[#F6F3EE]/50 transition-colors">
-                    <td className="py-3 font-medium text-[#1F2328]">Today 5:32 pm</td>
-                    <td className="py-3">
-                      <span className="bg-[#F26B1D]/10 text-[#F26B1D] px-2 py-0.5 rounded font-semibold text-[11px]">
-                        Exam
-                      </span>
-                    </td>
-                    <td className="py-3 font-semibold text-[#1F2328]">Give and Take</td>
-                    <td className="py-3 text-[#6B7280]">16 min</td>
-                    <td className="py-3 font-bold text-[#1F2328]">7 / 8</td>
-                    <td className="py-3">
-                      <Camera className="w-3.5 h-3.5 text-[#17A34A]" />
-                    </td>
-                    <td className="py-3 text-right">
-                      <button
-                        onClick={() => onOpenSession('44444444-4444-4444-4444-444444444442')}
-                        className="text-[#1E6FE0] hover:underline font-semibold"
-                      >
-                        Transcript
-                      </button>
-                    </td>
-                  </tr>
-
-                  <tr className="hover:bg-[#F6F3EE]/50 transition-colors">
-                    <td className="py-3 font-medium text-[#1F2328]">Today 5:05 pm</td>
-                    <td className="py-3">
-                      <span className="bg-[#1E6FE0]/10 text-[#1E6FE0] px-2 py-0.5 rounded font-semibold text-[11px]">
-                        Learn
-                      </span>
-                    </td>
-                    <td className="py-3 font-semibold text-[#1F2328]">Give and Take</td>
-                    <td className="py-3 text-[#6B7280]">26 min</td>
-                    <td className="py-3 text-[#6B7280]">14 questions</td>
-                    <td className="py-3">
-                      <CameraOff className="w-3.5 h-3.5 text-[#6B7280]" />
-                    </td>
-                    <td className="py-3 text-right">
-                      <button
-                        onClick={() => onOpenSession('44444444-4444-4444-4444-444444444441')}
-                        className="text-[#1E6FE0] hover:underline font-semibold"
-                      >
-                        Transcript
-                      </button>
-                    </td>
-                  </tr>
-
-                  <tr className="hover:bg-[#F6F3EE]/50 transition-colors">
-                    <td className="py-3 font-medium text-[#1F2328]">Yesterday</td>
-                    <td className="py-3">
-                      <span className="bg-[#F26B1D]/10 text-[#F26B1D] px-2 py-0.5 rounded font-semibold text-[11px]">
-                        Exam
-                      </span>
-                    </td>
-                    <td className="py-3 font-semibold text-[#1F2328]">Fun at Class Party!</td>
-                    <td className="py-3 text-[#6B7280]">25 min</td>
-                    <td className="py-3 font-bold text-[#17A34A]">10 / 10</td>
-                    <td className="py-3">
-                      <CameraOff className="w-3.5 h-3.5 text-[#6B7280]" />
-                    </td>
-                    <td className="py-3 text-right">
-                      <button
-                        onClick={() => onOpenSession('s-past-1')}
-                        className="text-[#1E6FE0] hover:underline font-semibold"
-                      >
-                        Transcript
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+          ) : (
+            <div className="space-y-4">
+              {subjectMastery.map((sub) => (
+                <div key={sub.subject} className="space-y-3">
+                  <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                    {sub.subject}
+                  </div>
+                  {sub.chapters.length === 0 ? (
+                    <div className="text-xs text-[var(--text-muted)]">
+                      {sub.sessionsCount} study sessions · no graded exams yet
+                    </div>
+                  ) : (
+                    sub.chapters.map((ch) => (
+                      <div key={ch.chapter}>
+                        <div className="flex justify-between text-xs font-semibold text-[var(--text-primary)] mb-1">
+                          <span>{ch.chapter}</span>
+                          <span className={ch.pct < 65 ? 'text-[var(--error-red)] font-bold' : ''}>{ch.pct}%</span>
+                        </div>
+                        <div className="w-full bg-[var(--badge-bg)] h-2.5 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${
+                              ch.pct < 65 ? 'bg-[var(--error-red)]' : 'bg-[var(--success-green)]'
+                            }`}
+                            style={{ width: `${ch.pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              ))}
             </div>
-          </div>
+          )}
+
+          {dashboard?.attentionInsight && (
+            <div className="bg-[var(--brand-orange)]/10 border border-[var(--brand-orange)]/30 rounded-2xl p-4 flex items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <Sparkles className="w-5 h-5 text-[var(--brand-orange)] shrink-0 mt-0.5" />
+                <p className="text-xs text-[var(--text-primary)] leading-relaxed font-medium">
+                  {dashboard.attentionInsight}
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Right Rail: Review Queue Preview + Device Status */}
+        {/* Right Rail (1/3): Review Queue & Device */}
         <div className="space-y-6">
-          {/* Review Queue Preview */}
-          <div className="card p-5 space-y-4">
+          {/* Review Queue Card */}
+          <div className="card p-5 space-y-4 shadow-sm">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-[#F26B1D]" />
-                <h2 className="text-base font-bold text-[#1F2328]">Review Queue</h2>
-              </div>
-              <span className="bg-[#F26B1D] text-white text-[11px] font-bold px-2 py-0.5 rounded-full">
-                {reviewResolved ? '0' : '1'}
+              <h3 className="text-sm font-bold text-[var(--text-primary)]">Review queue</h3>
+              <span className="text-xs text-[var(--brand-orange)] font-semibold">
+                {needsReviewGrades.length} pending
               </span>
             </div>
 
-            {reviewResolved ? (
-              <div className="text-center py-6 text-xs text-[#6B7280]">
-                All pending items reviewed!
+            {firstReview ? (
+              <div className="p-3.5 rounded-2xl bg-[var(--warning-gold)]/10 border border-[var(--warning-gold)]/30 space-y-3">
+                <div className="text-xs text-[var(--text-muted)]">
+                  Q{firstReview.q_no} · {Math.round((firstReview.confidence || 0) * 100)}% sure
+                </div>
+                <div className="text-sm font-bold text-[var(--text-primary)]">
+                  {firstReview.question} — read as &ldquo;{firstReview.child_answer}&rdquo;
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => handleInlineResolve(firstReview.id, 'correct')}
+                    className="btn bg-[var(--success-green)] text-white text-xs py-1.5 min-h-[36px]"
+                  >
+                    <Check className="w-3.5 h-3.5 mr-1" /> Correct
+                  </button>
+                  <button
+                    onClick={() => handleInlineResolve(firstReview.id, 'wrong')}
+                    className="btn bg-[var(--bg-card)] border border-[var(--border-card)] text-[var(--error-red)] text-xs py-1.5 min-h-[36px]"
+                  >
+                    <X className="w-3.5 h-3.5 mr-1" /> Wrong
+                  </button>
+                </div>
               </div>
             ) : (
-              <div className="border border-[#ECE7DE] rounded-2xl p-4 bg-[#FBF9F6] space-y-3">
-                <div className="flex items-center justify-between text-[11px] text-[#6B7280]">
-                  <span>Give and Take · Q3</span>
-                  <span className="text-[#B7791F] font-bold">58% sure</span>
-                </div>
-                <p className="text-xs font-semibold text-[#1F2328]">
-                  36 + 27 = 63 (or 03?)
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleInlineResolve('correct')}
-                    className="btn btn-secondary text-xs flex-1 py-1.5 font-bold hover:text-[#17A34A]"
-                  >
-                    <Check className="w-3.5 h-3.5 text-[#17A34A]" /> Correct
-                  </button>
-                  <button
-                    onClick={() => handleInlineResolve('wrong')}
-                    className="btn btn-secondary text-xs flex-1 py-1.5 font-bold hover:text-[#D8262B]"
-                  >
-                    <X className="w-3.5 h-3.5 text-[#D8262B]" /> Wrong
-                  </button>
-                </div>
-                <button
-                  onClick={() => onNavigateTab('review')}
-                  className="w-full text-center text-[11px] text-[#F26B1D] font-medium hover:underline block pt-1"
-                >
-                  Inspect photo & decide in full view →
-                </button>
+              <div className="p-4 rounded-2xl bg-[var(--success-green)]/10 text-[var(--success-green)] text-xs font-semibold text-center">
+                All caught up! No grades waiting for review.
               </div>
             )}
           </div>
 
           {/* Device Card */}
-          <div className="card p-5 space-y-4">
+          <div className="card p-5 space-y-3 shadow-sm">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-[#F26B1D]/15 text-[#F26B1D] flex items-center justify-center">
-                  <Cpu className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-[#1F2328]">Study Room</h3>
-                  <span className="text-[11px] text-[#6B7280]">DuDu ESP32-S3</span>
-                </div>
-              </div>
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-[#17A34A] bg-[#17A34A]/10 px-2.5 py-0.5 rounded-full">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#17A34A]" /> Online
-              </span>
+              <h3 className="text-sm font-bold text-[var(--text-primary)]">Device</h3>
+              <button
+                onClick={() => onNavigateTab('devices')}
+                className="text-xs text-[var(--study-blue)] font-semibold hover:underline"
+              >
+                Manage
+              </button>
             </div>
-
-            <div className="space-y-1.5 text-xs text-[#6B7280] pt-1">
-              <div className="flex justify-between">
-                <span>Local IP</span>
-                <span className="font-mono text-[#1F2328]">192.168.1.107</span>
+            {device ? (
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`w-2.5 h-2.5 rounded-full ${
+                      device.online ? 'bg-[var(--success-green)] animate-pulse' : 'bg-[var(--text-muted)]'
+                    }`}
+                  />
+                  <div>
+                    <div className="font-semibold text-[var(--text-primary)]">
+                      {device.name} · {device.online ? 'online' : 'offline'}
+                    </div>
+                    <div className="text-[var(--text-muted)] font-mono">
+                      {device.device_uid} · {device.ip || 'No IP'}
+                      {device.rssi !== null ? ` · ${device.rssi} dBm` : ''}
+                    </div>
+                  </div>
+                </div>
+                <Cpu className="w-4 h-4 text-[var(--text-muted)]" />
               </div>
-              <div className="flex justify-between">
-                <span>Camera state</span>
-                <span className="font-medium text-[#17A34A]">Armed (Exam mode)</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Wi-Fi Signal</span>
-                <span className="font-medium text-[#1F2328]">-58 dBm</span>
-              </div>
-            </div>
-
-            <button
-              onClick={() => onNavigateTab('devices')}
-              className="btn btn-secondary w-full text-xs py-2 font-semibold"
-            >
-              Manage Device & Speak
-            </button>
+            ) : (
+              <div className="text-xs text-[var(--text-muted)]">No device paired yet.</div>
+            )}
           </div>
         </div>
+      </div>
+
+      {/* Sessions Table */}
+      <div className="card p-6 space-y-4 shadow-sm">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-bold text-[var(--text-primary)]">Sessions</h2>
+          <span className="text-xs text-[var(--text-muted)]">
+            {sessions.length} total {sessions.length === 1 ? 'session' : 'sessions'}
+          </span>
+        </div>
+
+        {sessions.length === 0 ? (
+          <div className="py-10 text-center space-y-2">
+            <div className="text-sm font-semibold text-[var(--text-primary)]">No sessions recorded yet</div>
+            <p className="text-xs text-[var(--text-muted)]">
+              Once {child.name} completes a Learn, Q&amp;A, Exam, or Scan session on DuDu, it will appear here.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-[var(--border-card)] text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
+                  <th className="py-2.5 font-semibold">When</th>
+                  <th className="py-2.5 font-semibold">Mode</th>
+                  <th className="py-2.5 font-semibold">Subject / Topic</th>
+                  <th className="py-2.5 font-semibold">Length</th>
+                  <th className="py-2.5 font-semibold">Attention</th>
+                  <th className="py-2.5 font-semibold">Result</th>
+                  <th className="py-2.5 font-semibold">Camera</th>
+                  <th className="py-2.5 font-semibold text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--border-card)] text-xs">
+                {sessions.map((s) => {
+                  const dist = s.distractions ?? 0;
+                  return (
+                    <tr key={s.id} className="hover:bg-[var(--input-bg)] transition-colors">
+                      <td className="py-3 font-medium text-[var(--text-primary)] whitespace-nowrap">
+                        {formatKolkataDateTime(s.started_at)}
+                      </td>
+                      <td className="py-3 text-[var(--text-muted)] capitalize">{s.mode}</td>
+                      <td className="py-3 font-medium text-[var(--text-primary)]">
+                        {s.subject} · {s.chapter}
+                      </td>
+                      <td className="py-3 text-[var(--text-muted)]">{s.minutes} min</td>
+                      <td className="py-3">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold ${
+                            dist === 0
+                              ? 'bg-[var(--success-green)]/15 text-[var(--success-green)]'
+                              : 'bg-[var(--warning-gold)]/15 text-[var(--warning-gold)]'
+                          }`}
+                        >
+                          {dist === 0 ? '🙂 focused' : `⚠ ${dist}`}
+                        </span>
+                        {s.active_pct >= 0 && (
+                          <span className="ml-1.5 text-[var(--text-muted)]">{s.active_pct}%</span>
+                        )}
+                      </td>
+                      <td className="py-3 font-bold text-[var(--text-primary)]">
+                        {s.score_total
+                          ? `${s.score_right ?? 0} / ${s.score_total}`
+                          : `${s.questions} Q`}
+                      </td>
+                      <td className="py-3">
+                        {s.camera_used ? (
+                          <span className="inline-flex items-center gap-1 text-[var(--success-green)] font-medium">
+                            <Camera className="w-3.5 h-3.5" /> on
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[var(--text-muted)]">
+                            <CameraOff className="w-3.5 h-3.5" /> off
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 text-right">
+                        <button
+                          onClick={() => onOpenSession(s.id)}
+                          className="text-[var(--study-blue)] font-semibold hover:underline"
+                        >
+                          Transcript
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

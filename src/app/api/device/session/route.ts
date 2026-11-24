@@ -16,6 +16,13 @@ const sessionSchema = z.object({
   answered_right: z.number().default(0),
   off_topic: z.number().default(0),
   camera_used: z.boolean().default(false),
+  watch_checks: z.number().default(0),
+  watch_moving: z.number().default(0),
+  active_pct: z.number().default(-1),
+  sleepy_checks: z.number().default(0),
+  sleepy_yes: z.number().default(0),
+  sleepy_no_answer: z.number().default(0),
+  distractions: z.number().default(0),
   turns: z
     .array(
       z.object({
@@ -126,7 +133,14 @@ export async function POST(req: NextRequest) {
       off_topic: data.off_topic,
       camera_used: hasCamera,
       score_right: scoreRight,
-      score_total: scoreTotal
+      score_total: scoreTotal,
+      watch_checks: data.watch_checks,
+      watch_moving: data.watch_moving,
+      active_pct: data.active_pct,
+      sleepy_checks: data.sleepy_checks,
+      sleepy_yes: data.sleepy_yes,
+      sleepy_no_answer: data.sleepy_no_answer,
+      distractions: data.distractions
     },
     data.turns,
     data.events,

@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Cpu, Bell, Sun, Moon, Sparkles, Flame, Monitor, Palette } from 'lucide-react';
+import { Bell, Sun, Moon, Sparkles, Flame, Monitor, Palette, LogOut } from 'lucide-react';
 import { useTheme, ParentTheme } from '@/context/ThemeContext';
 import Link from 'next/link';
 
@@ -10,16 +10,19 @@ interface NavbarProps {
   childName?: string;
   cbseClass?: number;
   isOnline?: boolean;
+  reviewCount?: number;
   activeTab?: string;
   onTabChange?: (tab: string) => void;
+  onSignOut?: () => void;
 }
 
 export function Navbar({
   childName = 'Arjun',
   cbseClass = 3,
   isOnline = true,
-  activeTab,
-  onTabChange
+  reviewCount = 0,
+  onTabChange,
+  onSignOut
 }: NavbarProps) {
   const { parentTheme, setParentTheme } = useTheme();
   const [showThemePicker, setShowThemePicker] = useState(false);
@@ -45,7 +48,7 @@ export function Navbar({
           <div>
             <div className="flex items-center gap-2">
               <span className="font-semibold text-[var(--text-primary)] text-base">{childName}</span>
-              <span className="text-xs bg-[var(--border-card)] text-[var(--text-muted)] px-2 py-0.5 rounded-full font-medium">
+              <span className="text-xs bg-[var(--badge-bg)] text-[var(--text-muted)] px-2 py-0.5 rounded-full font-medium">
                 Class {cbseClass}
               </span>
             </div>
@@ -133,10 +136,22 @@ export function Navbar({
             title="Review Queue"
           >
             <Bell className="w-5 h-5 text-[var(--text-primary)]" />
-            <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#F26B1D] text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-              1
-            </span>
+            {reviewCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#F26B1D] text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                {reviewCount}
+              </span>
+            )}
           </button>
+
+          {onSignOut && (
+            <button
+              onClick={onSignOut}
+              className="p-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border-card)] hover:bg-[var(--input-bg)] transition-colors text-[var(--text-muted)] hover:text-[var(--error-red)]"
+              title="Sign Out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
     </header>

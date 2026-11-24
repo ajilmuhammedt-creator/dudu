@@ -67,6 +67,13 @@ export interface SessionRecord {
   camera_used: boolean;
   score_right: number | null;
   score_total: number | null;
+  watch_checks?: number;
+  watch_moving?: number;
+  active_pct?: number;
+  sleepy_checks?: number;
+  sleepy_yes?: number;
+  sleepy_no_answer?: number;
+  distractions?: number;
   created_at: string;
 }
 
@@ -116,6 +123,7 @@ export interface EventRecord {
   id: number;
   device_id: string;
   child_id?: string | null;
+  session_id?: string | null;
   type: string;
   at: string;
   data: any;
@@ -201,147 +209,6 @@ class MemoryStore {
       settings_version_acked: 4,
       created_at: new Date(Date.now() - 30 * 86400000).toISOString()
     });
-
-    // Today's sessions
-    const s1Id = '44444444-4444-4444-4444-444444444441';
-    const s2Id = '44444444-4444-4444-4444-444444444442';
-
-    const todayDate = new Date();
-    const todayStr = todayDate.toISOString().split('T')[0];
-
-    const todayLearnStart = new Date(`${todayStr}T11:35:00Z`).toISOString(); // 5:05 pm IST
-    const todayLearnEnd = new Date(`${todayStr}T12:01:00Z`).toISOString();   // 5:31 pm IST
-    const todayExamStart = new Date(`${todayStr}T12:02:00Z`).toISOString();  // 5:32 pm IST
-    const todayExamEnd = new Date(`${todayStr}T12:18:00Z`).toISOString();    // 5:48 pm IST
-
-    this.sessions.set(s1Id, {
-      id: s1Id,
-      device_id: dId,
-      child_id: cId,
-      mode: 'learn',
-      subject: 'Mathematics',
-      chapter: 'Give and Take (Ch 12)',
-      started_at: todayLearnStart,
-      ended_at: todayLearnEnd,
-      minutes: 26,
-      questions: 14,
-      answered_right: 11,
-      off_topic: 1,
-      camera_used: false,
-      score_right: null,
-      score_total: null,
-      created_at: todayLearnEnd
-    });
-
-    this.sessions.set(s2Id, {
-      id: s2Id,
-      device_id: dId,
-      child_id: cId,
-      mode: 'exam',
-      subject: 'Mathematics',
-      chapter: 'Give and Take (Ch 12)',
-      started_at: todayExamStart,
-      ended_at: todayExamEnd,
-      minutes: 16,
-      questions: 8,
-      answered_right: 7,
-      off_topic: 0,
-      camera_used: true,
-      score_right: 7,
-      score_total: 8,
-      created_at: todayExamEnd
-    });
-
-    // Past 4 sessions this week (Total study time = 42 + 25 + 30 + 25 + 35 + 33 = 190 min = 3h 10m)
-    const pastDays = [
-      { id: 's-past-1', mode: 'exam', sub: 'Mathematics', ch: 'Fun at Class Party! (Ch 10)', min: 25, q: 10, right: 10, total: 10, daysAgo: 1 },
-      { id: 's-past-2', mode: 'exam', sub: 'Mathematics', ch: 'House of Hundreds – II (Ch 9)', min: 30, q: 12, right: 11, total: 12, daysAgo: 2 },
-      { id: 's-past-3', mode: 'learn', sub: 'EVS', ch: 'Water O Water', min: 25, q: 8, right: 7, total: null, daysAgo: 3 },
-      { id: 's-past-4', mode: 'exam', sub: 'Mathematics', ch: 'Filling and Lifting (Ch 11)', min: 35, q: 10, right: 8, total: 10, daysAgo: 4 },
-      { id: 's-past-5', mode: 'exam', sub: 'Mathematics', ch: 'Give and Take: subtraction', min: 33, q: 9, right: 5, total: 9, daysAgo: 5 }
-    ];
-
-    for (const p of pastDays) {
-      const pStart = new Date(Date.now() - p.daysAgo * 86400000).toISOString();
-      const pEnd = new Date(Date.now() - p.daysAgo * 86400000 + p.min * 60000).toISOString();
-      this.sessions.set(p.id, {
-        id: p.id,
-        device_id: dId,
-        child_id: cId,
-        mode: p.mode as any,
-        subject: p.sub,
-        chapter: p.ch,
-        started_at: pStart,
-        ended_at: pEnd,
-        minutes: p.min,
-        questions: p.q,
-        answered_right: p.right,
-        off_topic: 0,
-        camera_used: p.mode === 'exam',
-        score_right: p.right,
-        score_total: p.total,
-        created_at: pEnd
-      });
-    }
-
-    // Turns for Today's Learn session
-    this.turns.set(s1Id, [
-      { id: 1, session_id: s1Id, idx: 1, speaker: 'robot', text: "Let's learn about two-digit addition with carrying. I'll ask you a few questions. Ready?", off_topic: false, correct: null, at: todayLearnStart },
-      { id: 2, session_id: s1Id, idx: 2, speaker: 'child', text: 'yes', off_topic: false, correct: null, at: todayLearnStart },
-      { id: 3, session_id: s1Id, idx: 3, speaker: 'robot', text: "Great. Let's add 47 and 38. We start with the ones. What is 7 plus 8?", off_topic: false, correct: null, at: todayLearnStart },
-      { id: 4, session_id: s1Id, idx: 4, speaker: 'child', text: 'fifteen', off_topic: false, correct: true, at: todayLearnStart },
-      { id: 5, session_id: s1Id, idx: 5, speaker: 'robot', text: 'Yes, 15! So we write 5 and carry 1 to the tens. Now, what is 4 plus 3 plus the carried 1?', off_topic: false, correct: null, at: todayLearnStart },
-      { id: 6, session_id: s1Id, idx: 6, speaker: 'child', text: 'can we play cricket game', off_topic: true, correct: null, at: todayLearnStart },
-      { id: 7, session_id: s1Id, idx: 7, speaker: 'robot', text: "I can only help with your school subjects right now. Shall we finish this sum first? What is 4 plus 3 plus the carried 1?", off_topic: false, correct: null, at: todayLearnStart },
-      { id: 8, session_id: s1Id, idx: 8, speaker: 'child', text: 'eight', off_topic: false, correct: true, at: todayLearnStart },
-      { id: 9, session_id: s1Id, idx: 9, speaker: 'robot', text: 'Spot on! So 47 plus 38 gives us 85. Excellent work, Arjun!', off_topic: false, correct: null, at: todayLearnStart }
-    ]);
-
-    // Needs review grade
-    const gReviewId = '55555555-5555-5555-5555-555555555555';
-    this.grades.set(gReviewId, {
-      id: gReviewId,
-      session_id: s2Id,
-      child_id: cId,
-      q_no: 3,
-      question: 'Ravi has 36 marbles and his sister gives him 27 more. How many marbles does Ravi have now?',
-      child_answer: '63',
-      correct_answer: '63 · 2 marks',
-      marks_total: 2,
-      marks_awarded: null,
-      confidence: 0.58,
-      reason: 'The 6 could be a 0',
-      status: 'needs_review',
-      photo_path: 'answer-photos/demo-q3-work.jpg',
-      raw: { q: '36 + 27', child_answer: '63', correct_answer: '63', confidence: 0.58 },
-      created_at: todayExamEnd
-    });
-
-    // Auto grades for mastery calculation
-    const autoGrades: GradeRecord[] = [
-      { id: 'g-1', session_id: s2Id, child_id: cId, q_no: 1, question: '47 + 38', child_answer: '85', correct_answer: '85', marks_total: 1, marks_awarded: 1, confidence: 0.97, reason: 'Clear handwriting', status: 'auto', photo_path: null, created_at: todayExamEnd },
-      { id: 'g-2', session_id: s2Id, child_id: cId, q_no: 2, question: '56 + 29', child_answer: '85', correct_answer: '85', marks_total: 1, marks_awarded: 1, confidence: 0.95, reason: 'Clear handwriting', status: 'auto', photo_path: null, created_at: todayExamEnd },
-      { id: 'g-3', session_id: s2Id, child_id: cId, q_no: 4, question: '4 x 7', child_answer: '28', correct_answer: '28', marks_total: 1, marks_awarded: 1, confidence: 0.99, reason: 'Clear handwriting', status: 'auto', photo_path: null, created_at: todayExamEnd },
-      { id: 'g-4', session_id: 's-past-5', child_id: cId, q_no: 1, question: '72 - 45', child_answer: '37', correct_answer: '27', marks_total: 1, marks_awarded: 0, confidence: 0.58, reason: 'Check borrowing in ones column', status: 'auto', photo_path: null, created_at: todayExamEnd },
-      { id: 'g-5', session_id: 's-past-5', child_id: cId, q_no: 2, question: '63 - 28', child_answer: '45', correct_answer: '35', marks_total: 1, marks_awarded: 0, confidence: 0.90, reason: 'Borrowing slip', status: 'auto', photo_path: null, created_at: todayExamEnd },
-      { id: 'g-6', session_id: 's-past-5', child_id: cId, q_no: 3, question: '81 - 47', child_answer: '34', correct_answer: '34', marks_total: 1, marks_awarded: 1, confidence: 0.92, reason: 'Correct subtraction', status: 'auto', photo_path: null, created_at: todayExamEnd },
-      { id: 'g-7', session_id: 's-past-5', child_id: cId, q_no: 4, question: '52 - 18', child_answer: '44', correct_answer: '34', marks_total: 1, marks_awarded: 0, confidence: 0.88, reason: 'Borrowing slip', status: 'auto', photo_path: null, created_at: todayExamEnd },
-      { id: 'g-8', session_id: 's-past-5', child_id: cId, q_no: 5, question: '90 - 45', child_answer: '45', correct_answer: '45', marks_total: 1, marks_awarded: 1, confidence: 0.96, reason: 'Correct', status: 'auto', photo_path: null, created_at: todayExamEnd }
-    ];
-
-    for (const ag of autoGrades) {
-      this.grades.set(ag.id, ag);
-    }
-
-    // Events
-    this.events.push({
-      id: 1,
-      device_id: dId,
-      child_id: cId,
-      type: 'break_prompt',
-      at: `${todayStr}T12:10:00Z`, // 5:40 pm IST
-      data: { reason: 'stillness', prompt: 'Feeling sleepy?' }
-    });
   }
 }
 
@@ -353,6 +220,50 @@ const LOCAL_STATE_FILE = '/tmp/dudu-device-state.json';
 
 let stateInitialized = false;
 let lastSyncTime = 0;
+
+function applyStatePayload(data: any): void {
+  if (Array.isArray(data.devices)) {
+    for (const d of data.devices) {
+      memoryStore.devices.set(d.id, d);
+    }
+  }
+  if (Array.isArray(data.childSettings)) {
+    for (const cs of data.childSettings) {
+      memoryStore.childSettings.set(cs.child_id, cs);
+    }
+  }
+  if (Array.isArray(data.familyMembers)) {
+    for (const fm of data.familyMembers) {
+      memoryStore.familyMembers.set(`${fm.family_id}:${fm.user_id}`, fm);
+    }
+  }
+  if (Array.isArray(data.commands)) {
+    memoryStore.commands = data.commands;
+  }
+  if (Array.isArray(data.sessions)) {
+    for (const s of data.sessions) {
+      memoryStore.sessions.set(s.id, s);
+    }
+  }
+  if (data.turns && typeof data.turns === 'object') {
+    for (const [sid, list] of Object.entries(data.turns)) {
+      if (Array.isArray(list)) {
+        memoryStore.turns.set(sid, list as TurnRecord[]);
+      }
+    }
+  }
+  if (Array.isArray(data.grades)) {
+    for (const g of data.grades) {
+      memoryStore.grades.set(g.id, g);
+    }
+  }
+  if (Array.isArray(data.events)) {
+    memoryStore.events = data.events;
+  }
+  if (Array.isArray(data.flags)) {
+    memoryStore.flags = data.flags;
+  }
+}
 
 async function ensureStateLoaded(): Promise<void> {
   const now = Date.now();
@@ -366,24 +277,7 @@ async function ensureStateLoaded(): Promise<void> {
     if (fs.existsSync(LOCAL_STATE_FILE)) {
       const content = fs.readFileSync(LOCAL_STATE_FILE, 'utf-8');
       const data = JSON.parse(content);
-      if (Array.isArray(data.devices)) {
-        for (const d of data.devices) {
-          memoryStore.devices.set(d.id, d);
-        }
-      }
-      if (Array.isArray(data.childSettings)) {
-        for (const cs of data.childSettings) {
-          memoryStore.childSettings.set(cs.child_id, cs);
-        }
-      }
-      if (Array.isArray(data.familyMembers)) {
-        for (const fm of data.familyMembers) {
-          memoryStore.familyMembers.set(`${fm.family_id}:${fm.user_id}`, fm);
-        }
-      }
-      if (Array.isArray(data.commands)) {
-        memoryStore.commands = data.commands;
-      }
+      applyStatePayload(data);
       stateInitialized = true;
       lastSyncTime = now;
       return;
@@ -396,24 +290,7 @@ async function ensureStateLoaded(): Promise<void> {
     if (!error && data) {
       const text = await data.text();
       const parsed = JSON.parse(text);
-      if (Array.isArray(parsed.devices)) {
-        for (const d of parsed.devices) {
-          memoryStore.devices.set(d.id, d);
-        }
-      }
-      if (Array.isArray(parsed.childSettings)) {
-        for (const cs of parsed.childSettings) {
-          memoryStore.childSettings.set(cs.child_id, cs);
-        }
-      }
-      if (Array.isArray(parsed.familyMembers)) {
-        for (const fm of parsed.familyMembers) {
-          memoryStore.familyMembers.set(`${fm.family_id}:${fm.user_id}`, fm);
-        }
-      }
-      if (Array.isArray(parsed.commands)) {
-        memoryStore.commands = parsed.commands;
-      }
+      applyStatePayload(parsed);
       stateInitialized = true;
       lastSyncTime = now;
 
@@ -430,11 +307,21 @@ async function ensureStateLoaded(): Promise<void> {
 }
 
 async function persistState(): Promise<void> {
+  const turnsObj: Record<string, TurnRecord[]> = {};
+  for (const [sid, list] of memoryStore.turns.entries()) {
+    turnsObj[sid] = list;
+  }
+
   const payload = {
     devices: Array.from(memoryStore.devices.values()),
     childSettings: Array.from(memoryStore.childSettings.values()),
     familyMembers: Array.from(memoryStore.familyMembers.values()),
     commands: memoryStore.commands,
+    sessions: Array.from(memoryStore.sessions.values()),
+    turns: turnsObj,
+    grades: Array.from(memoryStore.grades.values()),
+    events: memoryStore.events,
+    flags: memoryStore.flags,
     updated_at: new Date().toISOString()
   };
   const str = JSON.stringify(payload, null, 2);
@@ -818,6 +705,7 @@ export const DataStore = {
   },
 
   async getTodayUsageMinutes(childId: string): Promise<number> {
+    await ensureStateLoaded();
     const kolkataMidnight = getKolkataMidnightToday();
 
     try {
@@ -971,6 +859,7 @@ export const DataStore = {
       };
     }>
   ): Promise<{ sessionId: string; needsReviewCount: number }> {
+    await ensureStateLoaded();
     const sessionId = crypto.randomUUID();
     let needsReviewCount = 0;
 
@@ -1001,6 +890,7 @@ export const DataStore = {
         id: memoryStore.nextEventId++,
         device_id: sessionData.device_id,
         child_id: sessionData.child_id,
+        session_id: sessionId,
         type: e.type || 'generic',
         at: e.at ? new Date(e.at * 1000).toISOString() : new Date().toISOString(),
         data: e.data || null
@@ -1042,10 +932,12 @@ export const DataStore = {
       await supabaseAdmin.from('sessions').insert(fullSession);
     } catch {}
 
+    await persistState();
     return { sessionId, needsReviewCount };
   },
 
   async getSessions(childId: string): Promise<SessionRecord[]> {
+    await ensureStateLoaded();
     try {
       const { data, error } = await supabaseAdmin
         .from('sessions')
@@ -1063,6 +955,7 @@ export const DataStore = {
   },
 
   async getSessionById(sessionId: string): Promise<SessionRecord | null> {
+    await ensureStateLoaded();
     try {
       const { data, error } = await supabaseAdmin
         .from('sessions')
@@ -1076,6 +969,7 @@ export const DataStore = {
   },
 
   async getTurns(sessionId: string): Promise<TurnRecord[]> {
+    await ensureStateLoaded();
     try {
       const { data, error } = await supabaseAdmin
         .from('turns')
@@ -1089,20 +983,25 @@ export const DataStore = {
   },
 
   async deleteTurns(sessionId: string): Promise<void> {
+    await ensureStateLoaded();
     memoryStore.turns.delete(sessionId);
     try {
       await supabaseAdmin.from('turns').delete().eq('session_id', sessionId);
     } catch {}
+    await persistState();
   },
 
   async flagTurn(turnId: number, userId: string, reason: string): Promise<void> {
+    await ensureStateLoaded();
     memoryStore.flags.push({ turn_id: turnId, user_id: userId, reason });
     try {
       await supabaseAdmin.from('flags').insert({ turn_id: turnId, user_id: userId, reason });
     } catch {}
+    await persistState();
   },
 
   async getGrades(childId: string, status?: 'needs_review' | 'auto' | 'reviewed'): Promise<GradeRecord[]> {
+    await ensureStateLoaded();
     try {
       let q = supabaseAdmin.from('grades').select('*').eq('child_id', childId);
       if (status) q = q.eq('status', status);
@@ -1122,6 +1021,7 @@ export const DataStore = {
   },
 
   async resolveGrade(gradeId: string, marksAwarded: number, decidedBy?: string): Promise<GradeRecord> {
+    await ensureStateLoaded();
     const g = memoryStore.grades.get(gradeId);
     if (!g) throw new Error('Grade not found');
 
@@ -1147,10 +1047,12 @@ export const DataStore = {
         .eq('id', gradeId);
     } catch {}
 
+    await persistState();
     return updated;
   },
 
   async getEvents(childId: string): Promise<EventRecord[]> {
+    await ensureStateLoaded();
     try {
       const { data, error } = await supabaseAdmin
         .from('events')

@@ -76,8 +76,8 @@ export function DevicesView() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[#1F2328]">Connected Devices</h1>
-          <p className="text-sm text-[#6B7280]">
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Connected Devices</h1>
+          <p className="text-sm text-[var(--text-muted)]">
             Manage DuDu desk robots paired to your family
           </p>
         </div>
@@ -135,12 +135,12 @@ export function DevicesView() {
                       </button>
                     </h2>
                   )}
-                  <span className="text-[10px] bg-[#ECE7DE] text-[#6B7280] font-mono px-2 py-0.5 rounded">
-                    DUDU-90932C9FC114
+                  <span className="text-[10px] bg-[var(--badge-bg)] text-[var(--text-muted)] font-mono px-2 py-0.5 rounded">
+                    {deviceData?.device_uid || 'DUDU-90932C9FC114'}
                   </span>
                 </div>
-                <div className="text-xs text-[#6B7280] mt-0.5">
-                  Paired to: <strong className="text-[#1F2328]">Arjun</strong> (Class 3)
+                <div className="text-xs text-[var(--text-muted)] mt-0.5">
+                  Paired to: <strong className="text-[var(--text-primary)]">{deviceData?.child_name || 'Arjun'}</strong> (Class {deviceData?.child_class || 3})
                 </div>
               </div>
             </div>
@@ -152,20 +152,23 @@ export function DevicesView() {
           </div>
 
           {/* Telemetry info */}
-          <div className="grid grid-cols-3 gap-2 py-3 border-y border-[#ECE7DE] text-xs">
+          <div className="grid grid-cols-3 gap-2 py-3 border-y border-[var(--border-card)] text-xs">
             <div>
-              <span className="text-[#6B7280] block text-[11px]">Local IP</span>
-              <span className="font-mono font-medium text-[#1F2328]">192.168.1.107</span>
+              <span className="text-[var(--text-muted)] block text-[11px]">Local IP</span>
+              <span className="font-mono font-medium text-[var(--text-primary)]">{deviceData?.ip || '—'}</span>
             </div>
             <div>
-              <span className="text-[#6B7280] block text-[11px]">Wi-Fi RSSI</span>
-              <span className="font-medium text-[#1F2328] flex items-center gap-1">
-                <Wifi className="w-3 h-3 text-[#17A34A]" /> -58 dBm
+              <span className="text-[var(--text-muted)] block text-[11px]">Wi-Fi RSSI</span>
+              <span className="font-medium text-[var(--text-primary)] flex items-center gap-1">
+                <Wifi className="w-3 h-3 text-[var(--success-green)]" />{' '}
+                {deviceData?.rssi !== null && deviceData?.rssi !== undefined ? `${deviceData.rssi} dBm` : '—'}
               </span>
             </div>
             <div>
-              <span className="text-[#6B7280] block text-[11px]">Firmware</span>
-              <span className="font-mono font-medium text-[#1F2328]">v1.0 (ESP32-S3)</span>
+              <span className="text-[var(--text-muted)] block text-[11px]">Firmware</span>
+              <span className="font-mono font-medium text-[var(--text-primary)]">
+                v{deviceData?.firmware || '1.0'} (ESP32-S3)
+              </span>
             </div>
           </div>
 

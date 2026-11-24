@@ -84,15 +84,15 @@ export function SignInView({ onSignInSuccess }: SignInViewProps) {
   };
 
   return (
-    <div className="min-h-screen bg-[#F6F3EE] flex flex-col justify-center items-center px-4 py-12">
-      <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-[#ECE7DE] shadow-xl space-y-6 animate-in fade-in zoom-in-95 duration-200">
+    <div className="min-h-screen bg-[var(--bg-page)] flex flex-col justify-center items-center px-4 py-12">
+      <div className="max-w-md w-full bg-[var(--bg-card)] rounded-3xl p-8 border border-[var(--border-card)] shadow-xl space-y-6 animate-in fade-in zoom-in-95 duration-200">
         <div className="text-center space-y-2">
-          <div className="w-14 h-14 bg-[#F26B1D]/15 text-[#F26B1D] rounded-2xl flex items-center justify-center mx-auto text-2xl font-bold shadow-sm">
+          <div className="w-14 h-14 bg-[var(--brand-orange)]/15 text-[var(--brand-orange)] rounded-2xl flex items-center justify-center mx-auto text-2xl font-bold shadow-sm">
             🤖
           </div>
-          <h1 className="text-2xl font-extrabold text-[#1F2328]">DuDu Parent Access</h1>
-          <p className="text-xs text-[#6B7280]">
-            Sign in to manage Arjun's study window, review AI gradings, and control DuDu desk robot.
+          <h1 className="text-2xl font-extrabold text-[var(--text-primary)]">DuDu Parent Access</h1>
+          <p className="text-xs text-[var(--text-muted)]">
+            Sign in to manage Arjun&apos;s study window, review AI gradings, and control DuDu desk robot.
           </p>
         </div>
 
@@ -111,7 +111,7 @@ export function SignInView({ onSignInSuccess }: SignInViewProps) {
         ) : (
           <form onSubmit={handleMagicLink} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-[#1F2328] mb-1.5">
+              <label className="block text-xs font-semibold text-[var(--text-primary)] mb-1.5">
                 Parent Email (Magic Link)
               </label>
               <div className="relative">
@@ -121,9 +121,9 @@ export function SignInView({ onSignInSuccess }: SignInViewProps) {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="name@example.com"
                   required
-                  className="w-full bg-[#F6F3EE] border border-[#ECE7DE] rounded-xl px-4 py-3 text-xs text-[#1F2328] pl-10 focus:outline-none focus:border-[#F26B1D]"
+                  className="w-full bg-[var(--input-bg)] border border-[var(--border-card)] rounded-xl px-4 py-3 text-xs text-[var(--text-primary)] pl-10 focus:outline-none focus:border-[var(--brand-orange)]"
                 />
-                <Mail className="w-4 h-4 text-[#6B7280] absolute left-3.5 top-3.5" />
+                <Mail className="w-4 h-4 text-[var(--text-muted)] absolute left-3.5 top-3.5" />
               </div>
             </div>
 
@@ -162,14 +162,14 @@ export function SignInView({ onSignInSuccess }: SignInViewProps) {
           <button
             onClick={handleDemoSignIn}
             disabled={loading}
-            className="w-full btn bg-[#ECE7DE] text-[#1F2328] hover:bg-[#dfd9ce] text-xs py-2.5 flex items-center justify-center gap-2 font-medium"
+            className="w-full btn bg-[var(--badge-bg)] text-[var(--text-primary)] hover:opacity-90 text-xs py-2.5 flex items-center justify-center gap-2 font-medium"
           >
-            <Sparkles className="w-3.5 h-3.5 text-[#F26B1D]" />
+            <Sparkles className="w-3.5 h-3.5 text-[var(--brand-orange)]" />
             Continue as Demo Parent (Sharma Family)
           </button>
         </div>
 
-        <div className="pt-2 text-center text-[11px] text-[#6B7280] flex items-center justify-center gap-1.5">
+        <div className="pt-2 text-center text-[11px] text-[var(--text-muted)] flex items-center justify-center gap-1.5">
           <Shield className="w-3.5 h-3.5 text-[#17A34A]" />
           <span>Linked automatically to Sharma Family (Arjun · Class 3)</span>
         </div>

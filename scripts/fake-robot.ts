@@ -128,14 +128,24 @@ async function uploadSampleSession() {
     minutes: 16,
     questions: 4,
     answered_right: 3,
-    off_topic: 0,
+    off_topic: 2,
     camera_used: true,
+    watch_checks: 24,
+    watch_moving: 19,
+    active_pct: 79,
+    sleepy_checks: 1,
+    sleepy_yes: 1,
+    sleepy_no_answer: 0,
+    distractions: 3,
     turns: [
       { s: 'robot', t: 'Let us check your written page for Question 3.', at: now - 900 },
       { s: 'child', t: 'I held it up to the camera.', at: now - 850 }
     ],
     events: [
-      { type: 'camera_capture', at: now - 800 }
+      { type: 'camera_capture', at: now - 800 },
+      { type: 'off_topic', at: now - 600 },
+      { type: 'sleepy_check', at: now - 400 },
+      { type: 'sleepy_yes', at: now - 390 }
     ],
     scans: [
       {

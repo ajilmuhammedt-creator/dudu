@@ -9,7 +9,9 @@ export async function POST(req: NextRequest) {
 
   try {
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
     if (user) {
       userId = user.id;
       userEmail = user.email || null;
@@ -29,7 +31,7 @@ export async function POST(req: NextRequest) {
   const finalUserId = userId || 'demo-parent-sharma';
   await DataStore.linkUserToFamily(finalUserId, '11111111-1111-1111-1111-111111111111', 'parent');
 
-  return NextResponse.json({
+  const res = NextResponse.json({
     success: true,
     user_id: finalUserId,
     email: userEmail || 'parent@sharma.demo',
@@ -37,4 +39,13 @@ export async function POST(req: NextRequest) {
     child_id: '22222222-2222-2222-2222-222222222222',
     linked: true
   });
+
+  res.cookies.set('dudu_demo_session', finalUserId, {
+    httpOnly: true,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 60 * 60 * 24 * 7 // 7 days
+  });
+
+  return res;
 }

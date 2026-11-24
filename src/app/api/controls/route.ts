@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { guidSchema } from '@/lib/validators';
 import { DataStore } from '@/lib/data-store';
 import { hashPin } from '@/lib/crypto';
-import { createClient } from '@/lib/supabase/server';
+import { resolveParentUser } from '@/lib/auth-helper';
 
 const controlsSchema = z.object({
   child_id: guidSchema.default('22222222-2222-2222-2222-222222222222'),
@@ -23,30 +23,18 @@ const controlsSchema = z.object({
   robot_theme: z.enum(['day', 'night', 'cosmic', 'sunset']).optional()
 });
 
-async function resolveUser(req: NextRequest): Promise<string> {
-  // 1. Try Supabase authenticated user session
-  try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user?.id) return user.id;
-  } catch {}
-
-  // 2. Try Authorization header
-  const authHeader = req.headers.get('authorization') || '';
-  if (authHeader.startsWith('Bearer ')) {
-    const token = authHeader.slice(7).trim();
-    if (token) return token;
-  }
-
-  // 3. Fallback to demo parent for development / testing
-  return 'demo-parent-sharma';
-}
-
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const childId = searchParams.get('child_id') || '22222222-2222-2222-2222-222222222222';
 
-  const userId = await resolveUser(req);
+  const userId = await resolveParentUser(req);
+  if (!userId) {
+    return NextResponse.json(
+      { error: 'unauthenticated', message: 'Please sign in to view child settings.' },
+      { status: 401 }
+    );
+  }
+
   const ownsChild = await DataStore.userOwnsChild(userId, childId);
   if (!ownsChild) {
     return NextResponse.json(
@@ -60,6 +48,14 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const userId = await resolveParentUser(req);
+  if (!userId) {
+    return NextResponse.json(
+      { error: 'unauthenticated', message: 'Please sign in to save settings.' },
+      { status: 401 }
+    );
+  }
+
   let body: any;
   try {
     body = await req.json();
@@ -82,7 +78,6 @@ export async function POST(req: NextRequest) {
   const { child_id, parent_pin, ...rest } = parsed.data;
 
   // Authorization check: parent must own the child
-  const userId = await resolveUser(req);
   const ownsChild = await DataStore.userOwnsChild(userId, child_id);
   if (!ownsChild) {
     return NextResponse.json(

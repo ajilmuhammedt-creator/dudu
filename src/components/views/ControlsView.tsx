@@ -250,7 +250,7 @@ export function ControlsView() {
                 Robot Screen Theme (ESP32-S3)
               </label>
               <p className="text-[11px] text-[var(--text-muted)]">
-                Syncs directly to DuDu’s display. Can also be toggled via the moon button on the robot.
+                Syncs directly to DuDu’s display. Can also be previewed and toggled on the web Robot Screen.
               </p>
             </div>
           </div>
@@ -349,7 +349,7 @@ export function ControlsView() {
           <div>
             <div className="text-sm font-semibold text-[var(--text-primary)]">Camera for written exams</div>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">
-              Only during Exam and Scan & Check. Light shows when on.
+              During Study mode, if the camera and break prompts are on, EduBuddy checks every 15 seconds whether your child is moving, to ask if they feel sleepy. Pictures stay on the robot and are deleted immediately; only counts are shared with you.
             </p>
           </div>
           <input
