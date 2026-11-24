@@ -18,7 +18,9 @@ const controlsSchema = z.object({
   window_end: z.string().optional(),
   language: z.enum(['en', 'hi', 'ml']).optional(),
   wake_sensitivity: z.number().min(1).max(10).optional(),
-  parent_pin: z.string().length(4).optional()
+  parent_pin: z.string().length(4).optional(),
+  theme: z.enum(['light', 'dark', 'soft-blue', 'warm-orange']).optional(),
+  robot_theme: z.enum(['day', 'night', 'cosmic', 'sunset']).optional()
 });
 
 async function resolveUser(req: NextRequest): Promise<string> {

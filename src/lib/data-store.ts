@@ -45,6 +45,8 @@ export interface ChildSettingsRecord {
   language: 'en' | 'hi' | 'ml';
   wake_sensitivity: number;
   parent_pin_hash: string | null;
+  theme: 'light' | 'dark' | 'soft-blue' | 'warm-orange';
+  robot_theme: 'day' | 'night' | 'cosmic' | 'sunset';
   version: number;
   updated_at: string;
 }
@@ -176,6 +178,8 @@ class MemoryStore {
       language: 'en',
       wake_sensitivity: 4,
       parent_pin_hash: null,
+      theme: 'light',
+      robot_theme: 'day',
       version: 4,
       updated_at: new Date().toISOString()
     });
@@ -744,6 +748,8 @@ export const DataStore = {
       language: 'en',
       wake_sensitivity: 4,
       parent_pin_hash: null,
+      theme: 'light',
+      robot_theme: 'day',
       version: 1,
       updated_at: new Date().toISOString()
     };

@@ -2,9 +2,27 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Sliders, ShieldCheck, Check, Bell, Lock, AlertTriangle } from 'lucide-react';
+import {
+  Sliders,
+  ShieldCheck,
+  Check,
+  Bell,
+  Lock,
+  AlertTriangle,
+  Palette,
+  Sun,
+  Moon,
+  Sparkles,
+  Flame,
+  Monitor,
+  ExternalLink
+} from 'lucide-react';
+import { useTheme, ParentTheme, RobotTheme } from '@/context/ThemeContext';
+import Link from 'next/link';
 
 export function ControlsView() {
+  const { parentTheme, setParentTheme, robotTheme, setRobotTheme } = useTheme();
+
   const [subjects, setSubjects] = useState<string[]>(['Mathematics', 'EVS']);
   const [stayOnSyllabus, setStayOnSyllabus] = useState(true);
   const [cameraExam, setCameraExam] = useState(true);
@@ -49,6 +67,8 @@ export function ControlsView() {
             if (data.settings.window_end) setWindowEnd(data.settings.window_end);
             if (data.settings.language) setLanguage(data.settings.language);
             if (data.settings.wake_sensitivity !== undefined) setSensitivity(data.settings.wake_sensitivity);
+            if (data.settings.theme) setParentTheme(data.settings.theme);
+            if (data.settings.robot_theme) setRobotTheme(data.settings.robot_theme);
           }
         }
       } catch (err) {
@@ -59,7 +79,7 @@ export function ControlsView() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [setParentTheme, setRobotTheme]);
 
   const handleToggleSubject = (sub: string) => {
     let next: string[];
@@ -89,6 +109,8 @@ export function ControlsView() {
         language,
         wake_sensitivity: sensitivity,
         parent_pin: pin.length === 4 ? pin : undefined,
+        theme: parentTheme,
+        robot_theme: robotTheme,
         ...override
       };
 
@@ -111,6 +133,16 @@ export function ControlsView() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleParentThemeChange = (newTheme: ParentTheme) => {
+    setParentTheme(newTheme);
+    triggerAutoSave({ theme: newTheme });
+  };
+
+  const handleRobotThemeChange = (newTheme: RobotTheme) => {
+    setRobotTheme(newTheme);
+    triggerAutoSave({ robot_theme: newTheme });
   };
 
   return (
@@ -136,18 +168,136 @@ export function ControlsView() {
 
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-[#1F2328]">What EduBuddy may do</h1>
-        <div className="flex items-center justify-between mt-1 text-sm text-[#6B7280]">
+        <h1 className="text-2xl font-bold text-[var(--text-primary)]">What EduBuddy may do</h1>
+        <div className="flex items-center justify-between mt-1 text-sm text-[var(--text-muted)]">
           <span>Arjun · CBSE Class 3</span>
-          <button className="text-[#F26B1D] font-medium hover:underline text-xs">
+          <button className="text-[var(--brand-orange)] font-medium hover:underline text-xs">
             Change class
           </button>
         </div>
       </div>
 
+      {/* THEMES & APPEARANCE CARD */}
+      <div className="card p-5 space-y-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Palette className="w-4 h-4 text-[var(--brand-orange)]" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+              Themes & Appearance
+            </span>
+          </div>
+          <Link
+            href="/robot"
+            className="flex items-center gap-1 text-xs text-[var(--brand-orange)] font-semibold hover:underline"
+          >
+            <Monitor className="w-3.5 h-3.5" />
+            <span>Open Robot Screen</span>
+            <ExternalLink className="w-3 h-3" />
+          </Link>
+        </div>
+
+        {/* 1. Parent App Theme Selector */}
+        <div>
+          <label className="text-xs font-semibold text-[var(--text-primary)] block mb-2">
+            Parent App Theme
+          </label>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            {[
+              { id: 'light' as ParentTheme, name: 'Classic Cream', desc: 'Warm ivory & clean paper', bg: '#F6F3EE', text: '#1F2328' },
+              { id: 'dark' as ParentTheme, name: 'Midnight', desc: 'Dark slate neumorphic', bg: '#0B111E', text: '#F8FAFC' },
+              { id: 'soft-blue' as ParentTheme, name: 'Sky Blue', desc: 'Calm clouds & sky', bg: '#EDF3FC', text: '#0F294D' },
+              { id: 'warm-orange' as ParentTheme, name: 'Sunset', desc: 'Warm cozy terracotta', bg: '#FFF7ED', text: '#431407' }
+            ].map((t) => {
+              const isSelected = parentTheme === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => handleParentThemeChange(t.id)}
+                  className={`p-3 rounded-2xl border text-left transition-all relative overflow-hidden ${
+                    isSelected
+                      ? 'border-[var(--brand-orange)] ring-2 ring-[var(--brand-orange)]/30 shadow-md'
+                      : 'border-[var(--border-card)] hover:border-[var(--brand-orange)]/40 bg-[var(--bg-card)]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span
+                      className="w-5 h-5 rounded-full border border-black/10 flex items-center justify-center text-[10px]"
+                      style={{ backgroundColor: t.bg, color: t.text }}
+                    >
+                      ✓
+                    </span>
+                    {isSelected && (
+                      <span className="text-[10px] font-bold text-[var(--brand-orange)] bg-[var(--brand-orange)]/10 px-1.5 py-0.5 rounded-full">
+                        Active
+                      </span>
+                    )}
+                  </div>
+                  <div className="font-semibold text-xs text-[var(--text-primary)]">{t.name}</div>
+                  <div className="text-[10px] text-[var(--text-muted)] leading-tight mt-0.5">{t.desc}</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="border-t border-[var(--border-card)]" />
+
+        {/* 2. Robot Screen Theme Selector */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <label className="text-xs font-semibold text-[var(--text-primary)] block">
+                Robot Screen Theme (ESP32-S3)
+              </label>
+              <p className="text-[11px] text-[var(--text-muted)]">
+                Syncs directly to DuDu’s display. Can also be toggled via the moon button on the robot.
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            {[
+              { id: 'day' as RobotTheme, name: 'Day Light', icon: Sun, desc: 'Soft sunny clouds', bg: '#F0F4FF', border: '#D0E0FF' },
+              { id: 'night' as RobotTheme, name: 'Night Moon', icon: Moon, desc: 'Low blue light star sky', bg: '#0B101D', border: '#1E293B' },
+              { id: 'cosmic' as RobotTheme, name: 'Cosmic Violet', icon: Sparkles, desc: 'Galaxy space nebula', bg: '#180B2E', border: '#3B1E63' },
+              { id: 'sunset' as RobotTheme, name: 'Golden Hour', icon: Flame, desc: 'Warm peach glow', bg: '#FFF1EB', border: '#FED7AA' }
+            ].map((t) => {
+              const isSelected = robotTheme === t.id;
+              const Icon = t.icon;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => handleRobotThemeChange(t.id)}
+                  className={`p-3 rounded-2xl border text-left transition-all relative ${
+                    isSelected
+                      ? 'border-[var(--brand-orange)] ring-2 ring-[var(--brand-orange)]/30 shadow-md'
+                      : 'border-[var(--border-card)] hover:border-[var(--brand-orange)]/40 bg-[var(--bg-card)]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div
+                      className="w-6 h-6 rounded-lg flex items-center justify-center text-xs shadow-sm"
+                      style={{ backgroundColor: t.bg, border: `1px solid ${t.border}` }}
+                    >
+                      <Icon className="w-3.5 h-3.5 text-[var(--brand-orange)]" />
+                    </div>
+                    {isSelected && (
+                      <span className="text-[10px] font-bold text-[var(--brand-orange)] bg-[var(--brand-orange)]/10 px-1.5 py-0.5 rounded-full">
+                        Active
+                      </span>
+                    )}
+                  </div>
+                  <div className="font-semibold text-xs text-[var(--text-primary)]">{t.name}</div>
+                  <div className="text-[10px] text-[var(--text-muted)] leading-tight mt-0.5">{t.desc}</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
       {/* Subjects */}
       <div className="card p-5 space-y-3">
-        <div className="text-xs font-semibold uppercase tracking-wider text-[#6B7280]">
+        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
           Subjects the tutor may teach
         </div>
         <div className="flex flex-wrap gap-2">
@@ -159,8 +309,8 @@ export function ControlsView() {
                 onClick={() => handleToggleSubject(sub)}
                 className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all flex items-center gap-1.5 ${
                   isSelected
-                    ? 'bg-[#F26B1D] text-white border-[#F26B1D]'
-                    : 'bg-white text-[#1F2328] border-[#ECE7DE] hover:border-[#F26B1D]/40'
+                    ? 'bg-[var(--brand-orange)] text-white border-[var(--brand-orange)]'
+                    : 'bg-[var(--bg-card)] text-[var(--text-primary)] border-[var(--border-card)] hover:border-[var(--brand-orange)]/40'
                 }`}
               >
                 {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
@@ -176,8 +326,8 @@ export function ControlsView() {
         {/* Syllabus */}
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-sm font-semibold text-[#1F2328]">Stay on the syllabus</div>
-            <p className="text-xs text-[#6B7280] mt-0.5">
+            <div className="text-sm font-semibold text-[var(--text-primary)]">Stay on the syllabus</div>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">
               Off-topic questions get a gentle “let’s get back to maths”.
             </p>
           </div>
@@ -188,17 +338,17 @@ export function ControlsView() {
               setStayOnSyllabus(e.target.checked);
               triggerAutoSave({ stay_on_syllabus: e.target.checked });
             }}
-            className="w-5 h-5 accent-[#F26B1D] rounded cursor-pointer mt-0.5"
+            className="w-5 h-5 accent-[var(--brand-orange)] rounded cursor-pointer mt-0.5"
           />
         </div>
 
-        <div className="border-t border-[#ECE7DE]" />
+        <div className="border-t border-[var(--border-card)]" />
 
         {/* Camera */}
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-sm font-semibold text-[#1F2328]">Camera for written exams</div>
-            <p className="text-xs text-[#6B7280] mt-0.5">
+            <div className="text-sm font-semibold text-[var(--text-primary)]">Camera for written exams</div>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">
               Only during Exam and Scan & Check. Light shows when on.
             </p>
           </div>
@@ -209,17 +359,17 @@ export function ControlsView() {
               setCameraExam(e.target.checked);
               triggerAutoSave({ camera_exam: e.target.checked });
             }}
-            className="w-5 h-5 accent-[#F26B1D] rounded cursor-pointer mt-0.5"
+            className="w-5 h-5 accent-[var(--brand-orange)] rounded cursor-pointer mt-0.5"
           />
         </div>
 
-        <div className="border-t border-[#ECE7DE]" />
+        <div className="border-t border-[var(--border-card)]" />
 
         {/* Break prompts */}
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-sm font-semibold text-[#1F2328]">Break prompts</div>
-            <p className="text-xs text-[#6B7280] mt-0.5">
+            <div className="text-sm font-semibold text-[var(--text-primary)]">Break prompts</div>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">
               “Feeling sleepy?” if Arjun goes very still. No scoring.
             </p>
           </div>
@@ -230,17 +380,17 @@ export function ControlsView() {
               setBreakPrompts(e.target.checked);
               triggerAutoSave({ break_prompts: e.target.checked });
             }}
-            className="w-5 h-5 accent-[#F26B1D] rounded cursor-pointer mt-0.5"
+            className="w-5 h-5 accent-[var(--brand-orange)] rounded cursor-pointer mt-0.5"
           />
         </div>
 
-        <div className="border-t border-[#ECE7DE]" />
+        <div className="border-t border-[var(--border-card)]" />
 
         {/* Keep Photos */}
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-sm font-semibold text-[#1F2328]">Keep answer photos</div>
-            <p className="text-xs text-[#6B7280] mt-0.5">
+            <div className="text-sm font-semibold text-[var(--text-primary)]">Keep answer photos</div>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">
               Deleted after 30 days. Off = graded, then discarded.
             </p>
           </div>
@@ -251,7 +401,7 @@ export function ControlsView() {
               setKeepPhotos(e.target.checked);
               triggerAutoSave({ keep_photos: e.target.checked });
             }}
-            className="w-5 h-5 accent-[#F26B1D] rounded cursor-pointer mt-0.5"
+            className="w-5 h-5 accent-[var(--brand-orange)] rounded cursor-pointer mt-0.5"
           />
         </div>
       </div>
@@ -259,10 +409,10 @@ export function ControlsView() {
       {/* Daily Study Limit */}
       <div className="card p-5 space-y-3">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wider text-[#6B7280]">
+          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
             Daily study limit
           </span>
-          <span className="text-sm font-bold text-[#1F2328]">{dailyLimit} min</span>
+          <span className="text-sm font-bold text-[var(--text-primary)]">{dailyLimit} min</span>
         </div>
         <input
           type="range"
@@ -273,9 +423,9 @@ export function ControlsView() {
           onChange={(e) => setDailyLimit(Number(e.target.value))}
           onMouseUp={() => triggerAutoSave({ daily_limit_min: dailyLimit })}
           onTouchEnd={() => triggerAutoSave({ daily_limit_min: dailyLimit })}
-          className="w-full accent-[#F26B1D] cursor-pointer"
+          className="w-full accent-[var(--brand-orange)] cursor-pointer"
         />
-        <div className="flex justify-between text-[11px] text-[#6B7280]">
+        <div className="flex justify-between text-[11px] text-[var(--text-muted)]">
           <span>15 min</span>
           <span>1 hour</span>
           <span>3 hours</span>
@@ -284,12 +434,12 @@ export function ControlsView() {
 
       {/* Study Window */}
       <div className="card p-5 space-y-3">
-        <div className="text-xs font-semibold uppercase tracking-wider text-[#6B7280]">
+        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
           Study window
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-[11px] text-[#6B7280] block mb-1">Start time</label>
+            <label className="text-[11px] text-[var(--text-muted)] block mb-1">Start time</label>
             <input
               type="time"
               value={windowStart}
@@ -297,11 +447,11 @@ export function ControlsView() {
                 setWindowStart(e.target.value);
                 triggerAutoSave({ window_start: e.target.value });
               }}
-              className="w-full bg-[#F6F3EE] border border-[#ECE7DE] rounded-xl px-3 py-2 text-sm text-[#1F2328] font-semibold"
+              className="w-full bg-[var(--input-bg)] border border-[var(--border-card)] rounded-xl px-3 py-2 text-sm text-[var(--text-primary)] font-semibold"
             />
           </div>
           <div>
-            <label className="text-[11px] text-[#6B7280] block mb-1">End time</label>
+            <label className="text-[11px] text-[var(--text-muted)] block mb-1">End time</label>
             <input
               type="time"
               value={windowEnd}
@@ -309,7 +459,7 @@ export function ControlsView() {
                 setWindowEnd(e.target.value);
                 triggerAutoSave({ window_end: e.target.value });
               }}
-              className="w-full bg-[#F6F3EE] border border-[#ECE7DE] rounded-xl px-3 py-2 text-sm text-[#1F2328] font-semibold"
+              className="w-full bg-[var(--input-bg)] border border-[var(--border-card)] rounded-xl px-3 py-2 text-sm text-[var(--text-primary)] font-semibold"
             />
           </div>
         </div>
@@ -317,7 +467,7 @@ export function ControlsView() {
 
       {/* Robot Language */}
       <div className="card p-5 space-y-3">
-        <div className="text-xs font-semibold uppercase tracking-wider text-[#6B7280]">
+        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
           Robot language
         </div>
         <div className="grid grid-cols-3 gap-2">
@@ -335,7 +485,7 @@ export function ControlsView() {
               className={`py-2 px-3 rounded-xl text-xs font-semibold border transition-all ${
                 language === lang.id
                   ? 'bg-[#1E6FE0] text-white border-[#1E6FE0]'
-                  : 'bg-white border-[#ECE7DE] text-[#1F2328] hover:bg-[#F6F3EE]'
+                  : 'bg-[var(--bg-card)] border-[var(--border-card)] text-[var(--text-primary)] hover:bg-[var(--input-bg)]'
               }`}
             >
               {lang.label}
@@ -347,10 +497,10 @@ export function ControlsView() {
       {/* Sensitivity */}
       <div className="card p-5 space-y-3">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wider text-[#6B7280]">
+          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
             “Hey DuDu” sensitivity
           </span>
-          <span className="text-sm font-bold text-[#1F2328]">{sensitivity} / 10</span>
+          <span className="text-sm font-bold text-[var(--text-primary)]">{sensitivity} / 10</span>
         </div>
         <input
           type="range"
@@ -361,9 +511,9 @@ export function ControlsView() {
           onChange={(e) => setSensitivity(Number(e.target.value))}
           onMouseUp={() => triggerAutoSave({ wake_sensitivity: sensitivity })}
           onTouchEnd={() => triggerAutoSave({ wake_sensitivity: sensitivity })}
-          className="w-full accent-[#F26B1D] cursor-pointer"
+          className="w-full accent-[var(--brand-orange)] cursor-pointer"
         />
-        <p className="text-[11px] text-[#6B7280]">
+        <p className="text-[11px] text-[var(--text-muted)]">
           Higher = wakes more easily, but may wake by itself.
         </p>
       </div>
@@ -372,12 +522,12 @@ export function ControlsView() {
       <div className="card p-5 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Lock className="w-4 h-4 text-[#6B7280]" />
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#6B7280]">
+            <Lock className="w-4 h-4 text-[var(--text-muted)]" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
               Parent PIN on the robot
             </span>
           </div>
-          <span className="text-[11px] text-[#6B7280]">4 digits</span>
+          <span className="text-[11px] text-[var(--text-muted)]">4 digits</span>
         </div>
         <div className="flex gap-2">
           <input
@@ -386,7 +536,7 @@ export function ControlsView() {
             placeholder="••••"
             value={pin}
             onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-            className="w-32 bg-[#F6F3EE] border border-[#ECE7DE] rounded-xl px-3 py-2 text-center text-base tracking-widest font-mono"
+            className="w-32 bg-[var(--input-bg)] border border-[var(--border-card)] rounded-xl px-3 py-2 text-center text-base tracking-widest font-mono"
           />
           <button
             onClick={() => triggerAutoSave({ parent_pin: pin })}
@@ -396,7 +546,7 @@ export function ControlsView() {
             Save PIN
           </button>
         </div>
-        <p className="text-[11px] text-[#6B7280]">
+        <p className="text-[11px] text-[var(--text-muted)]">
           Placeholder for firmware parental lock features.
         </p>
       </div>

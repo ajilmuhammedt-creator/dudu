@@ -108,6 +108,7 @@ export async function POST(req: NextRequest) {
     window_end: settings?.window_end ?? '19:30',
     language: settings?.language ?? 'en',
     wake_sensitivity: settings?.wake_sensitivity ?? 4,
+    robot_theme: settings?.robot_theme || 'day',
     usage_today_min: usageTodayMin,
     cmd_id: pendingCmd ? pendingCmd.id : 0,
     cmd_type: pendingCmd ? pendingCmd.type : '',

@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @layer base {
-  :root {
+  :root, [data-theme="light"] {
     --bg-page: #F6F3EE;
     --bg-card: #FFFFFF;
     --border-card: #ECE7DE;
@@ -12,6 +12,53 @@
     --success-green: #17A34A;
     --warning-gold: #B7791F;
     --error-red: #D8262B;
+    --input-bg: #F6F3EE;
+    --badge-bg: #ECE7DE;
+  }
+
+  [data-theme="dark"] {
+    --bg-page: #0B111E;
+    --bg-card: #151E32;
+    --border-card: #232F48;
+    --text-primary: #F1F5F9;
+    --text-muted: #94A3B8;
+    --brand-orange: #FB923C;
+    --study-blue: #38BDF8;
+    --success-green: #22C55E;
+    --warning-gold: #F59E0B;
+    --error-red: #EF4444;
+    --input-bg: #0F172A;
+    --badge-bg: #232F48;
+  }
+
+  [data-theme="soft-blue"] {
+    --bg-page: #EDF3FC;
+    --bg-card: #FFFFFF;
+    --border-card: #D3E2F8;
+    --text-primary: #0F294D;
+    --text-muted: #5375A3;
+    --brand-orange: #1E6FE0;
+    --study-blue: #2563EB;
+    --success-green: #10B981;
+    --warning-gold: #D97706;
+    --error-red: #EF4444;
+    --input-bg: #E2ECFA;
+    --badge-bg: #DCE8FA;
+  }
+
+  [data-theme="warm-orange"] {
+    --bg-page: #FFF7ED;
+    --bg-card: #FFFFFF;
+    --border-card: #FED7AA;
+    --text-primary: #431407;
+    --text-muted: #9A3412;
+    --brand-orange: #EA580C;
+    --study-blue: #D97706;
+    --success-green: #16A34A;
+    --warning-gold: #B45309;
+    --error-red: #DC2626;
+    --input-bg: #FFEDD5;
+    --badge-bg: #FED7AA;
   }
 
   body {
@@ -20,6 +67,7 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     min-height: 100vh;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 }
 
@@ -27,6 +75,7 @@
   background-color: var(--bg-card);
   border: 1px solid var(--border-card);
   border-radius: 20px;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
 .btn {
@@ -46,17 +95,17 @@
 }
 
 .btn-primary:hover {
-  background-color: #E05C12;
+  filter: brightness(0.92);
 }
 
 .btn-secondary {
-  background-color: #FFFFFF;
+  background-color: var(--bg-card);
   border: 1px solid var(--border-card);
   color: var(--text-primary);
 }
 
 .btn-secondary:hover {
-  background-color: #FBF9F6;
+  background-color: var(--input-bg);
 }
 
 /* Hide scrollbars for clean tab rows */
@@ -66,4 +115,25 @@
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* Robot Screen Themes */
+.robot-theme-day {
+  background: linear-gradient(135deg, #F0F4FF 0%, #FAF5FF 50%, #F5F3FF 100%);
+  color: #1F2328;
+}
+
+.robot-theme-night {
+  background: linear-gradient(135deg, #090D16 0%, #111827 50%, #0F172A 100%);
+  color: #F8FAFC;
+}
+
+.robot-theme-cosmic {
+  background: linear-gradient(135deg, #0A0518 0%, #1B0F33 50%, #2A103D 100%);
+  color: #FAF5FF;
+}
+
+.robot-theme-sunset {
+  background: linear-gradient(135deg, #FFF1EB 0%, #FED7AA 50%, #FDBA74 100%);
+  color: #431407;
 }

@@ -5,6 +5,7 @@ import { POST as syncHandler } from '../src/app/api/device/sync/route';
 import { POST as sessionHandler } from '../src/app/api/device/session/route';
 import { POST as unpairHandler } from '../src/app/api/unpair/route';
 import { POST as pairHandler } from '../src/app/api/pair/route';
+import { POST as controlsHandler } from '../src/app/api/controls/route';
 import { GET as statusHandler } from '../src/app/api/device/status/route';
 import { NextRequest } from 'next/server';
 import { DataStore } from '../src/lib/data-store';
@@ -235,5 +236,37 @@ describe('Device API Contract Tests', () => {
     expect(syncData2.paired).toBe(true);
     expect(syncData2.child_name).toBe('Arjun');
     expect(syncData2.child_class).toBe(3);
+  });
+
+  it('7. POST /api/controls & sync - updates and propagates themes to device', async () => {
+    const controlsReq = new NextRequest('http://localhost:3000/api/controls', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        child_id: '22222222-2222-2222-2222-222222222222',
+        theme: 'dark',
+        robot_theme: 'night'
+      })
+    });
+    const controlsRes = await controlsHandler(controlsReq);
+    expect(controlsRes.status).toBe(200);
+    const controlsData = await controlsRes.json();
+    expect(controlsData.settings.theme).toBe('dark');
+    expect(controlsData.settings.robot_theme).toBe('night');
+
+    // Robot syncs and receives robot_theme: 'night'
+    const syncReq = new NextRequest('http://localhost:3000/api/device/sync', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer DUDU-90932C9FC114'
+      },
+      body: JSON.stringify({ firmware: '1.0' })
+    });
+    const syncRes = await syncHandler(syncReq);
+    expect(syncRes.status).toBe(200);
+    const syncData = await syncRes.json();
+    expect(syncData.paired).toBe(true);
+    expect(syncData.robot_theme).toBe('night');
   });
 });
