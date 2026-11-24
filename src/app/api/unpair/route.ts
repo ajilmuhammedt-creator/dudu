@@ -1,10 +1,11 @@
 // src/app/api/unpair/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { guidSchema } from '@/lib/validators';
 import { DataStore } from '@/lib/data-store';
 
 const unpairSchema = z.object({
-  device_id: z.string().uuid().optional().default('33333333-3333-3333-3333-333333333333')
+  device_id: guidSchema.optional().default('33333333-3333-3333-3333-333333333333')
 });
 
 export async function POST(req: NextRequest) {

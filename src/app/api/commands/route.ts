@@ -1,10 +1,11 @@
 // src/app/api/commands/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { guidSchema } from '@/lib/validators';
 import { DataStore } from '@/lib/data-store';
 
 const commandSchema = z.object({
-  device_id: z.string().uuid(),
+  device_id: guidSchema,
   type: z.enum(['say', 'practice', 'rewrite', 'unpair', 'refresh']),
   arg: z.string().max(250).default('')
 });

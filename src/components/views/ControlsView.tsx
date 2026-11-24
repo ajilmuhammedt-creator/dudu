@@ -1,8 +1,8 @@
 // src/components/views/ControlsView.tsx
 'use client';
 
-import React, { useState } from 'react';
-import { Sliders, ShieldCheck, Check, Bell, Lock } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Sliders, ShieldCheck, Check, Bell, Lock, AlertTriangle } from 'lucide-react';
 
 export function ControlsView() {
   const [subjects, setSubjects] = useState<string[]>(['Mathematics', 'EVS']);
@@ -16,7 +16,7 @@ export function ControlsView() {
   const [language, setLanguage] = useState<'en' | 'hi' | 'ml'>('en');
   const [sensitivity, setSensitivity] = useState(4);
   const [pin, setPin] = useState('');
-  const [showAckToast, setShowAckToast] = useState(false);
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   const allSubjects = [
@@ -29,6 +29,37 @@ export function ControlsView() {
     'Malayalam',
     'Computer'
   ];
+
+  // Fetch current controls on mount
+  useEffect(() => {
+    let active = true;
+    async function fetchControls() {
+      try {
+        const res = await fetch('/api/controls?child_id=22222222-2222-2222-2222-222222222222');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.settings && active) {
+            if (data.settings.subjects) setSubjects(data.settings.subjects);
+            if (data.settings.stay_on_syllabus !== undefined) setStayOnSyllabus(data.settings.stay_on_syllabus);
+            if (data.settings.camera_exam !== undefined) setCameraExam(data.settings.camera_exam);
+            if (data.settings.break_prompts !== undefined) setBreakPrompts(data.settings.break_prompts);
+            if (data.settings.keep_photos !== undefined) setKeepPhotos(data.settings.keep_photos);
+            if (data.settings.daily_limit_min !== undefined) setDailyLimit(data.settings.daily_limit_min);
+            if (data.settings.window_start) setWindowStart(data.settings.window_start);
+            if (data.settings.window_end) setWindowEnd(data.settings.window_end);
+            if (data.settings.language) setLanguage(data.settings.language);
+            if (data.settings.wake_sensitivity !== undefined) setSensitivity(data.settings.wake_sensitivity);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load controls:', err);
+      }
+    }
+    fetchControls();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleToggleSubject = (sub: string) => {
     let next: string[];
@@ -45,29 +76,38 @@ export function ControlsView() {
   const triggerAutoSave = async (override?: any) => {
     setIsSaving(true);
     try {
-      await fetch('/api/controls', {
+      const payload = {
+        child_id: '22222222-2222-2222-2222-222222222222',
+        subjects,
+        stay_on_syllabus: stayOnSyllabus,
+        camera_exam: cameraExam,
+        break_prompts: breakPrompts,
+        keep_photos: keepPhotos,
+        daily_limit_min: dailyLimit,
+        window_start: windowStart,
+        window_end: windowEnd,
+        language,
+        wake_sensitivity: sensitivity,
+        parent_pin: pin.length === 4 ? pin : undefined,
+        ...override
+      };
+
+      const res = await fetch('/api/controls', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          child_id: '22222222-2222-2222-2222-222222222222',
-          subjects,
-          stay_on_syllabus: stayOnSyllabus,
-          camera_exam: cameraExam,
-          break_prompts: breakPrompts,
-          keep_photos: keepPhotos,
-          daily_limit_min: dailyLimit,
-          window_start: windowStart,
-          window_end: windowEnd,
-          language,
-          wake_sensitivity: sensitivity,
-          parent_pin: pin.length === 4 ? pin : undefined,
-          ...override
-        })
+        body: JSON.stringify(payload)
       });
-      setShowAckToast(true);
-      setTimeout(() => setShowAckToast(false), 3000);
-    } catch {
-      // Ignored
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || data.error || 'Failed to update settings');
+      }
+
+      setToast({ type: 'success', message: 'Settings saved & synced to robot ✓' });
+      setTimeout(() => setToast((prev) => (prev?.type === 'success' ? null : prev)), 3000);
+    } catch (err: any) {
+      setToast({ type: 'error', message: err.message || 'Failed to save changes. Please try again.' });
+      setTimeout(() => setToast((prev) => (prev?.type === 'error' ? null : prev)), 5000);
     } finally {
       setIsSaving(false);
     }
@@ -76,9 +116,21 @@ export function ControlsView() {
   return (
     <div className="max-w-xl mx-auto space-y-6 pb-24 md:pb-8">
       {/* Toast */}
-      {showAckToast && (
-        <div className="fixed top-16 right-4 z-50 bg-[#17A34A] text-white px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2 text-xs font-semibold animate-in fade-in slide-in-from-top-4">
-          <Check className="w-4 h-4" /> Updated on robot ✓
+      {toast && (
+        <div
+          role="alert"
+          className={`fixed top-16 right-4 z-50 px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2 text-xs font-semibold animate-in fade-in slide-in-from-top-4 ${
+            toast.type === 'error'
+              ? 'bg-[#EF4444] text-white border border-red-600'
+              : 'bg-[#17A34A] text-white'
+          }`}
+        >
+          {toast.type === 'error' ? (
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+          ) : (
+            <Check className="w-4 h-4 shrink-0" />
+          )}
+          <span>{toast.message}</span>
         </div>
       )}
 

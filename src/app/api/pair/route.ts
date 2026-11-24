@@ -1,12 +1,13 @@
 // src/app/api/pair/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { guidSchema } from '@/lib/validators';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { DataStore } from '@/lib/data-store';
 
 const pairSchema = z.object({
   code: z.string().transform((v) => v.replace(/\s+/g, '')),
-  child_id: z.string().min(1)
+  child_id: guidSchema
 });
 
 export async function POST(req: NextRequest) {

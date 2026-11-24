@@ -1,10 +1,11 @@
 // src/app/api/review/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { guidSchema } from '@/lib/validators';
 import { DataStore } from '@/lib/data-store';
 
 const reviewSchema = z.object({
-  grade_id: z.string().uuid(),
+  grade_id: guidSchema,
   decision: z.enum(['correct', 'half', 'wrong', 'rewrite'])
 });
 

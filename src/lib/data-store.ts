@@ -124,6 +124,7 @@ class MemoryStore {
   devices = new Map<string, DeviceRecord>();
   children = new Map<string, ChildRecord>();
   childSettings = new Map<string, ChildSettingsRecord>();
+  familyMembers = new Map<string, { family_id: string; user_id: string; role: string }>();
   sessions = new Map<string, SessionRecord>();
   turns = new Map<string, TurnRecord[]>();
   grades = new Map<string, GradeRecord>();
@@ -142,6 +143,13 @@ class MemoryStore {
     const fId = '11111111-1111-1111-1111-111111111111';
     const cId = '22222222-2222-2222-2222-222222222222';
     const dId = '33333333-3333-3333-3333-333333333333';
+
+    // Demo family member
+    this.familyMembers.set(`${fId}:demo-parent-sharma`, {
+      family_id: fId,
+      user_id: 'demo-parent-sharma',
+      role: 'parent'
+    });
 
     // Child Arjun
     this.children.set(cId, {
@@ -359,6 +367,16 @@ async function ensureStateLoaded(): Promise<void> {
           memoryStore.devices.set(d.id, d);
         }
       }
+      if (Array.isArray(data.childSettings)) {
+        for (const cs of data.childSettings) {
+          memoryStore.childSettings.set(cs.child_id, cs);
+        }
+      }
+      if (Array.isArray(data.familyMembers)) {
+        for (const fm of data.familyMembers) {
+          memoryStore.familyMembers.set(`${fm.family_id}:${fm.user_id}`, fm);
+        }
+      }
       if (Array.isArray(data.commands)) {
         memoryStore.commands = data.commands;
       }
@@ -377,6 +395,16 @@ async function ensureStateLoaded(): Promise<void> {
       if (Array.isArray(parsed.devices)) {
         for (const d of parsed.devices) {
           memoryStore.devices.set(d.id, d);
+        }
+      }
+      if (Array.isArray(parsed.childSettings)) {
+        for (const cs of parsed.childSettings) {
+          memoryStore.childSettings.set(cs.child_id, cs);
+        }
+      }
+      if (Array.isArray(parsed.familyMembers)) {
+        for (const fm of parsed.familyMembers) {
+          memoryStore.familyMembers.set(`${fm.family_id}:${fm.user_id}`, fm);
         }
       }
       if (Array.isArray(parsed.commands)) {
@@ -400,6 +428,8 @@ async function ensureStateLoaded(): Promise<void> {
 async function persistState(): Promise<void> {
   const payload = {
     devices: Array.from(memoryStore.devices.values()),
+    childSettings: Array.from(memoryStore.childSettings.values()),
+    familyMembers: Array.from(memoryStore.familyMembers.values()),
     commands: memoryStore.commands,
     updated_at: new Date().toISOString()
   };
@@ -672,6 +702,7 @@ export const DataStore = {
   },
 
   async getChildById(childId: string): Promise<ChildRecord | null> {
+    await ensureStateLoaded();
     try {
       const { data, error } = await supabaseAdmin
         .from('children')
@@ -685,6 +716,7 @@ export const DataStore = {
   },
 
   async getChildSettings(childId: string): Promise<ChildSettingsRecord | null> {
+    await ensureStateLoaded();
     try {
       const { data, error } = await supabaseAdmin
         .from('child_settings')
@@ -698,6 +730,7 @@ export const DataStore = {
   },
 
   async updateChildSettings(childId: string, partial: Partial<ChildSettingsRecord>): Promise<ChildSettingsRecord> {
+    await ensureStateLoaded();
     const existing = memoryStore.childSettings.get(childId) || {
       child_id: childId,
       subjects: ['Mathematics', 'EVS'],
@@ -718,7 +751,7 @@ export const DataStore = {
     const updated: ChildSettingsRecord = {
       ...existing,
       ...partial,
-      version: existing.version + 1,
+      version: (existing.version || 1) + 1,
       updated_at: new Date().toISOString()
     };
 
@@ -730,7 +763,52 @@ export const DataStore = {
     } catch {}
 
     memoryStore.childSettings.set(childId, updated);
+    await persistState();
     return updated;
+  },
+
+  async linkUserToFamily(userId: string, familyId: string = '11111111-1111-1111-1111-111111111111', role: string = 'parent'): Promise<void> {
+    await ensureStateLoaded();
+    memoryStore.familyMembers.set(`${familyId}:${userId}`, { family_id: familyId, user_id: userId, role });
+    try {
+      await supabaseAdmin.from('family_members').upsert({
+        family_id: familyId,
+        user_id: userId,
+        role
+      });
+    } catch {}
+    await persistState();
+  },
+
+  async isUserInFamily(userId: string, familyId: string): Promise<boolean> {
+    await ensureStateLoaded();
+    for (const fm of memoryStore.familyMembers.values()) {
+      if (fm.user_id === userId && fm.family_id === familyId) return true;
+    }
+    try {
+      const { data } = await supabaseAdmin
+        .from('family_members')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('family_id', familyId)
+        .maybeSingle();
+      if (data) return true;
+    } catch {}
+    return false;
+  },
+
+  async userOwnsChild(userId: string, childId: string): Promise<boolean> {
+    await ensureStateLoaded();
+    const child = await this.getChildById(childId);
+    if (!child) return false;
+    // For demo family, any authenticated parent or demo session is permitted & auto-linked
+    if (child.family_id === '11111111-1111-1111-1111-111111111111') {
+      const inFamily = await this.isUserInFamily(userId, child.family_id);
+      if (inFamily) return true;
+      await this.linkUserToFamily(userId, child.family_id, 'parent');
+      return true;
+    }
+    return await this.isUserInFamily(userId, child.family_id);
   },
 
   async getTodayUsageMinutes(childId: string): Promise<number> {

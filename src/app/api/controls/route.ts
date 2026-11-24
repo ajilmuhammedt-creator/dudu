@@ -1,11 +1,13 @@
 // src/app/api/controls/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { guidSchema } from '@/lib/validators';
 import { DataStore } from '@/lib/data-store';
 import { hashPin } from '@/lib/crypto';
+import { createClient } from '@/lib/supabase/server';
 
 const controlsSchema = z.object({
-  child_id: z.string().uuid(),
+  child_id: guidSchema.default('22222222-2222-2222-2222-222222222222'),
   subjects: z.array(z.string()).optional(),
   stay_on_syllabus: z.boolean().optional(),
   camera_exam: z.boolean().optional(),
@@ -19,20 +21,73 @@ const controlsSchema = z.object({
   parent_pin: z.string().length(4).optional()
 });
 
+async function resolveUser(req: NextRequest): Promise<string> {
+  // 1. Try Supabase authenticated user session
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user?.id) return user.id;
+  } catch {}
+
+  // 2. Try Authorization header
+  const authHeader = req.headers.get('authorization') || '';
+  if (authHeader.startsWith('Bearer ')) {
+    const token = authHeader.slice(7).trim();
+    if (token) return token;
+  }
+
+  // 3. Fallback to demo parent for development / testing
+  return 'demo-parent-sharma';
+}
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const childId = searchParams.get('child_id') || '22222222-2222-2222-2222-222222222222';
+
+  const userId = await resolveUser(req);
+  const ownsChild = await DataStore.userOwnsChild(userId, childId);
+  if (!ownsChild) {
+    return NextResponse.json(
+      { error: 'unauthorized', message: 'You do not have permission to view controls for this child.' },
+      { status: 403 }
+    );
+  }
+
+  const settings = await DataStore.getChildSettings(childId);
+  return NextResponse.json({ success: true, settings });
+}
+
 export async function POST(req: NextRequest) {
   let body: any;
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: 'invalid_json' }, { status: 400 });
+    return NextResponse.json({ error: 'invalid_json', message: 'Invalid JSON payload' }, { status: 400 });
   }
 
   const parsed = controlsSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: 'invalid_controls', details: parsed.error.issues }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: 'invalid_controls',
+        message: 'Invalid controls format: ' + parsed.error.issues.map((i) => i.message).join(', '),
+        details: parsed.error.issues
+      },
+      { status: 400 }
+    );
   }
 
   const { child_id, parent_pin, ...rest } = parsed.data;
+
+  // Authorization check: parent must own the child
+  const userId = await resolveUser(req);
+  const ownsChild = await DataStore.userOwnsChild(userId, child_id);
+  if (!ownsChild) {
+    return NextResponse.json(
+      { error: 'unauthorized', message: 'You do not have permission to manage this child.' },
+      { status: 403 }
+    );
+  }
 
   const updates: any = { ...rest };
   if (parent_pin) {
