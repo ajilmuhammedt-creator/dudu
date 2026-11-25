@@ -18,6 +18,7 @@ import { DashboardSession, DashboardEvent, DashboardTurn } from '@/lib/dashboard
 interface SessionTranscriptViewProps {
   session: DashboardSession | null;
   childName?: string;
+  flaggedTurnIds?: number[];
   onBack: () => void;
   onRefresh?: () => void;
 }
@@ -69,6 +70,7 @@ function formatInlineEventText(ev: DashboardEvent, childName: string): string {
 export function SessionTranscriptView({
   session,
   childName = 'Arjun',
+  flaggedTurnIds = [],
   onBack,
   onRefresh
 }: SessionTranscriptViewProps) {
@@ -76,6 +78,7 @@ export function SessionTranscriptView({
   const [flagTurnId, setFlagTurnId] = useState<number | null>(null);
   const [flagReason, setFlagReason] = useState('');
   const [flagSuccess, setFlagSuccess] = useState(false);
+  const [localFlaggedIds, setLocalFlaggedIds] = useState<number[]>([]);
   const [deletedLocally, setDeletedLocally] = useState(false);
 
   if (!session) {
@@ -136,7 +139,9 @@ export function SessionTranscriptView({
           reason: flagReason
         })
       });
+      setLocalFlaggedIds((prev) => [...prev, flagTurnId]);
       setFlagSuccess(true);
+      onRefresh?.();
       setTimeout(() => {
         setFlagSuccess(false);
         setFlagTurnId(null);
@@ -182,7 +187,8 @@ export function SessionTranscriptView({
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-[var(--text-primary)]">
-          {session.mode.toUpperCase()} · {session.subject} ({session.chapter})
+          {session.mode.toUpperCase()} · {session.subject || 'General'}
+          {session.chapter ? ` (${session.chapter})` : ''}
         </h1>
         <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] mt-1">
           <span>
@@ -298,12 +304,20 @@ export function SessionTranscriptView({
                 )}
 
                 {isRobot && (
-                  <button
-                    onClick={() => setFlagTurnId(turn.id)}
-                    className="text-[10px] text-[var(--text-muted)] hover:text-[var(--error-red)] mt-1 px-1 flex items-center gap-1"
-                  >
-                    <Flag className="w-2.5 h-2.5" /> Flag reply
-                  </button>
+                  <div className="flex items-center gap-2 mt-1 px-1">
+                    {(flaggedTurnIds.includes(turn.id) || localFlaggedIds.includes(turn.id)) ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[var(--error-red)] bg-[var(--error-red)]/10 px-2 py-0.5 rounded-full">
+                        <Flag className="w-2.5 h-2.5" /> Flagged
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => setFlagTurnId(turn.id)}
+                        className="text-[10px] text-[var(--text-muted)] hover:text-[var(--error-red)] flex items-center gap-1"
+                      >
+                        <Flag className="w-2.5 h-2.5" /> Flag reply
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             );

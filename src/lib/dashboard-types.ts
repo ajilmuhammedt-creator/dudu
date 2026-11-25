@@ -140,4 +140,13 @@ export interface DashboardData {
   sessions: DashboardSession[];
   grades: DashboardGrade[];
   needsReviewGrades: DashboardGrade[];
+  flaggedTurns?: Array<{
+    turn_id: number;
+    session_id: string;
+    text: string;
+    subject: string;
+    chapter: string;
+    reason: string;
+    at: string;
+  }>;
 }

@@ -6,7 +6,7 @@ import { DataStore } from '@/lib/data-store';
 
 const commandSchema = z.object({
   device_id: guidSchema,
-  type: z.enum(['say', 'practice', 'rewrite', 'unpair', 'refresh']),
+  type: z.enum(['say', 'practice', 'rewrite', 'music', 'unpair', 'refresh']),
   arg: z.string().max(250).default('')
 });
 

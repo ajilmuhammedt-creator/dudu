@@ -13,7 +13,7 @@ import {
   Tooltip,
   CartesianGrid
 } from 'recharts';
-import { Target, Sparkles, Check, Eye } from 'lucide-react';
+import { Target, Sparkles, Check, Eye, AlertTriangle } from 'lucide-react';
 import { DashboardData } from '@/lib/dashboard-types';
 
 interface ProgressViewProps {
@@ -22,7 +22,8 @@ interface ProgressViewProps {
 
 export function ProgressView({ dashboard }: ProgressViewProps) {
   const [period, setPeriod] = useState<'week' | 'month'>('week');
-  const [practiceDispatched, setPracticeDispatched] = useState(false);
+  const [dispatchedSubject, setDispatchedSubject] = useState<string | null>(null);
+  const [practiceError, setPracticeError] = useState<string | null>(null);
 
   const childName = dashboard?.child?.name || 'Arjun';
   const chartData =
@@ -36,20 +37,34 @@ export function ProgressView({ dashboard }: ProgressViewProps) {
   const configuredSubjects = dashboard?.settings?.subjects || [];
   const attentionInsight = dashboard?.attentionInsight;
 
-  const handleSetPractice = async () => {
+  const handleSetPractice = async (subjectName: string) => {
+    setPracticeError(null);
+    if (!dashboard?.device?.id) {
+      setPracticeError(`No robot is paired to ${childName}. Pair or assign a robot on Devices first.`);
+      setTimeout(() => setPracticeError(null), 4000);
+      return;
+    }
+
     try {
-      await fetch('/api/commands', {
+      const res = await fetch('/api/commands', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          device_id: dashboard?.device?.id || '33333333-3333-3333-3333-333333333333',
+          device_id: dashboard.device.id,
           type: 'practice',
-          arg: configuredSubjects[0] || 'Revision practice'
+          arg: subjectName
         })
       });
-      setPracticeDispatched(true);
-      setTimeout(() => setPracticeDispatched(false), 4000);
-    } catch {}
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || data.error || 'Could not schedule practice');
+      }
+      setDispatchedSubject(subjectName);
+      setTimeout(() => setDispatchedSubject(null), 4000);
+    } catch (err: any) {
+      setPracticeError(err.message || 'Failed to send practice command');
+      setTimeout(() => setPracticeError(null), 4000);
+    }
   };
 
   return (
@@ -80,6 +95,13 @@ export function ProgressView({ dashboard }: ProgressViewProps) {
           </button>
         </div>
       </div>
+
+      {practiceError && (
+        <div className="p-3 rounded-xl bg-[var(--error-red)]/10 border border-[var(--error-red)]/30 text-xs text-[var(--error-red)] font-medium flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span>{practiceError}</span>
+        </div>
+      )}
 
       {/* Study Minutes Chart */}
       <div className="card p-5 space-y-3">
@@ -203,54 +225,59 @@ export function ProgressView({ dashboard }: ProgressViewProps) {
           </p>
         </div>
       ) : (
-        subjects.map((sub) => (
-          <div key={sub.subject} className="card p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-base font-bold text-[var(--text-primary)]">{sub.subject}</span>
-              <span className="text-xs text-[var(--text-muted)]">
-                {sub.examsCount > 0
-                  ? `${sub.examsCount} exams · avg ${sub.avgPct ?? 0}%`
-                  : `${sub.sessionsCount} sessions · no exam yet`}
-              </span>
-            </div>
-
-            {sub.chapters.length > 0 && (
-              <div className="space-y-3">
-                {sub.chapters.map((ch) => (
-                  <div key={ch.chapter}>
-                    <div className="flex justify-between text-xs font-semibold text-[var(--text-primary)] mb-1">
-                      <span>{ch.chapter}</span>
-                      <span className={ch.pct < 65 ? 'text-[var(--error-red)]' : ''}>{ch.pct}%</span>
-                    </div>
-                    <div className="w-full bg-[var(--badge-bg)] h-2 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full ${
-                          ch.pct < 65 ? 'bg-[var(--error-red)]' : 'bg-[var(--success-green)]'
-                        }`}
-                        style={{ width: `${ch.pct}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
+        subjects.map((sub) => {
+          const isDispatched = dispatchedSubject === sub.subject;
+          return (
+            <div key={sub.subject} className="card p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-base font-bold text-[var(--text-primary)]">
+                  {sub.subject || 'General'}
+                </span>
+                <span className="text-xs text-[var(--text-muted)]">
+                  {sub.examsCount > 0
+                    ? `${sub.examsCount} exams · avg ${sub.avgPct ?? 0}%`
+                    : `${sub.sessionsCount} sessions · no exam yet`}
+                </span>
               </div>
-            )}
 
-            <button
-              onClick={handleSetPractice}
-              className="btn btn-primary text-xs w-full py-2.5 flex items-center justify-center gap-1.5"
-            >
-              {practiceDispatched ? (
-                <>
-                  <Check className="w-4 h-4" /> Practice session scheduled on robot!
-                </>
-              ) : (
-                <>
-                  <Target className="w-4 h-4" /> Set a practice session
-                </>
+              {sub.chapters.length > 0 && (
+                <div className="space-y-3">
+                  {sub.chapters.map((ch) => (
+                    <div key={ch.chapter}>
+                      <div className="flex justify-between text-xs font-semibold text-[var(--text-primary)] mb-1">
+                        <span>{ch.chapter}</span>
+                        <span className={ch.pct < 65 ? 'text-[var(--error-red)]' : ''}>{ch.pct}%</span>
+                      </div>
+                      <div className="w-full bg-[var(--badge-bg)] h-2 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${
+                            ch.pct < 65 ? 'bg-[var(--error-red)]' : 'bg-[var(--success-green)]'
+                          }`}
+                          style={{ width: `${ch.pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
-            </button>
-          </div>
-        ))
+
+              <button
+                onClick={() => handleSetPractice(sub.subject || 'General')}
+                className="btn btn-primary text-xs w-full py-2.5 flex items-center justify-center gap-1.5"
+              >
+                {isDispatched ? (
+                  <>
+                    <Check className="w-4 h-4" /> Practice on {sub.subject} scheduled!
+                  </>
+                ) : (
+                  <>
+                    <Target className="w-4 h-4" /> Set a practice session ({sub.subject})
+                  </>
+                )}
+              </button>
+            </div>
+          );
+        })
       )}
     </div>
   );

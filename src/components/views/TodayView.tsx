@@ -1,7 +1,7 @@
 // src/components/views/TodayView.tsx
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Clock,
   Award,
@@ -72,6 +72,15 @@ function formatEventLabel(ev: DashboardEvent): string {
 export function TodayView({ dashboard, onNavigateTab, onOpenSession }: TodayViewProps) {
   const [showPairModal, setShowPairModal] = useState(false);
   const [showAttentionModal, setShowAttentionModal] = useState(false);
+
+  useEffect(() => {
+    if (!showAttentionModal) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowAttentionModal(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [showAttentionModal]);
 
   const child = dashboard?.child || { name: 'Arjun', cbse_class: 3 };
   const subjects = dashboard?.settings?.subjects?.join(', ') || 'No subjects selected';
@@ -262,7 +271,8 @@ export function TodayView({ dashboard, onNavigateTab, onOpenSession }: TodayView
                         {s.mode === 'scan' ? 'Scan' : s.mode === 'exam' ? 'Exam' : s.mode === 'qa' ? 'Q&A' : 'Learn'}
                       </span>
                       <span className="text-sm font-semibold text-[var(--text-primary)]">
-                        {s.subject} · {s.chapter}
+                        {s.subject || 'General'}
+                        {s.chapter ? ` · ${s.chapter}` : ''}
                       </span>
                       {s.camera_used && (
                         <span className="inline-flex items-center gap-1 text-[11px] text-[var(--text-muted)] bg-[var(--input-bg)] px-2 py-0.5 rounded">
@@ -303,8 +313,14 @@ export function TodayView({ dashboard, onNavigateTab, onOpenSession }: TodayView
 
       {/* Attention Timeline Modal */}
       {showAttentionModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="card max-w-md w-full p-5 space-y-4 shadow-2xl">
+        <div
+          onClick={() => setShowAttentionModal(false)}
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="card max-w-md w-full p-5 space-y-4 shadow-2xl"
+          >
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-base font-bold text-[var(--text-primary)]">Today’s Attention Timeline</h3>

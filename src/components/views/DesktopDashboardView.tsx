@@ -48,8 +48,9 @@ export function DesktopDashboardView({
   onRefresh
 }: DesktopDashboardViewProps) {
   const [practiceDispatched, setPracticeDispatched] = useState(false);
+  const [practiceError, setPracticeError] = useState<string | null>(null);
 
-  const child = dashboard?.child || { name: 'Arjun', cbse_class: 3 };
+  const child = dashboard?.child || { id: '22222222-2222-2222-2222-222222222222', name: 'Arjun', cbse_class: 3 };
   const subjects = dashboard?.settings?.subjects?.join(', ') || 'No subjects configured';
   const device = dashboard?.device;
   const week = dashboard?.week || {
@@ -70,19 +71,30 @@ export function DesktopDashboardView({
   const weekTimeLabel = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
 
   const handleSetPractice = async () => {
+    setPracticeError(null);
+    if (!device?.id) {
+      setPracticeError(`No robot paired to ${child.name}. Assign a robot on Devices first.`);
+      setTimeout(() => setPracticeError(null), 4000);
+      return;
+    }
     try {
-      await fetch('/api/commands', {
+      const res = await fetch('/api/commands', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          device_id: device?.id || '33333333-3333-3333-3333-333333333333',
+          device_id: device.id,
           type: 'practice',
-          arg: dashboard?.settings?.subjects?.[0] || 'Practice session'
+          arg: dashboard?.settings?.subjects?.[0] || 'General'
         })
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Could not schedule practice');
       setPracticeDispatched(true);
       setTimeout(() => setPracticeDispatched(false), 3000);
-    } catch {}
+    } catch (err: any) {
+      setPracticeError(err.message || 'Failed to schedule practice');
+      setTimeout(() => setPracticeError(null), 4000);
+    }
   };
 
   const handleInlineResolve = async (gradeId: string, decision: 'correct' | 'wrong') => {
@@ -132,13 +144,14 @@ export function DesktopDashboardView({
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            onClick={onDownloadPdf}
+          <a
+            href={`/api/report/pdf?child_id=${encodeURIComponent(child.id)}`}
+            download={`edubuddy-${child.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-weekly-report.pdf`}
             className="btn btn-secondary text-xs font-semibold px-4 gap-2 shadow-sm"
           >
             <Download className="w-4 h-4 text-[var(--text-muted)]" />
             <span>Download report (PDF)</span>
-          </button>
+          </a>
 
           <button
             onClick={handleSetPractice}
@@ -156,6 +169,12 @@ export function DesktopDashboardView({
           </button>
         </div>
       </div>
+
+      {practiceError && (
+        <div className="p-3 rounded-xl bg-[var(--error-red)]/10 border border-[var(--error-red)]/30 text-xs text-[var(--error-red)] font-medium">
+          {practiceError}
+        </div>
+      )}
 
       {/* 4 KPI Tiles */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -420,7 +439,8 @@ export function DesktopDashboardView({
                       </td>
                       <td className="py-3 text-[var(--text-muted)] capitalize">{s.mode}</td>
                       <td className="py-3 font-medium text-[var(--text-primary)]">
-                        {s.subject} · {s.chapter}
+                        {s.subject || 'General'}
+                        {s.chapter ? ` · ${s.chapter}` : ''}
                       </td>
                       <td className="py-3 text-[var(--text-muted)]">{s.minutes} min</td>
                       <td className="py-3">

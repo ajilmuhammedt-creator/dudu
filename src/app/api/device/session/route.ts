@@ -7,8 +7,8 @@ import { getNowUnixSeconds } from '@/lib/date-utils';
 
 const sessionSchema = z.object({
   mode: z.enum(['learn', 'qa', 'fun', 'exam', 'scan']).default('learn'),
-  subject: z.string().default('Mathematics'),
-  chapter: z.string().default('General'),
+  subject: z.string().transform((v) => v.trim() || 'General').default('General'),
+  chapter: z.string().transform((v) => v.trim()).default(''),
   started_at: z.number().default(0),
   ended_at: z.number().default(0),
   minutes: z.number().default(0),

@@ -396,7 +396,7 @@ export function ControlsView({
           <div>
             <div className="text-sm font-semibold text-[var(--text-primary)]">Stay on the syllabus</div>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">
-              Off-topic questions get a gentle “let’s get back to maths”.
+              Off-topic questions get a gentle “let’s get back to {(subjects[0] || 'your lesson').toLowerCase()}”.
             </p>
           </div>
           <input
@@ -406,7 +406,7 @@ export function ControlsView({
               setStayOnSyllabus(e.target.checked);
               triggerAutoSave({ stay_on_syllabus: e.target.checked });
             }}
-            className="w-5 h-5 accent-[var(--brand-orange)] rounded cursor-pointer mt-0.5"
+            className="w-5 h-5 shrink-0 accent-[var(--brand-orange)] rounded cursor-pointer mt-0.5"
           />
         </div>
 
@@ -426,7 +426,7 @@ export function ControlsView({
               setCameraExam(e.target.checked);
               triggerAutoSave({ camera_exam: e.target.checked });
             }}
-            className="w-5 h-5 accent-[var(--brand-orange)] rounded cursor-pointer mt-0.5"
+            className="w-5 h-5 shrink-0 accent-[var(--brand-orange)] rounded cursor-pointer mt-0.5"
           />
         </div>
 
@@ -446,7 +446,7 @@ export function ControlsView({
               setBreakPrompts(e.target.checked);
               triggerAutoSave({ break_prompts: e.target.checked });
             }}
-            className="w-5 h-5 accent-[var(--brand-orange)] rounded cursor-pointer mt-0.5"
+            className="w-5 h-5 shrink-0 accent-[var(--brand-orange)] rounded cursor-pointer mt-0.5"
           />
         </div>
 
@@ -466,7 +466,7 @@ export function ControlsView({
               setKeepPhotos(e.target.checked);
               triggerAutoSave({ keep_photos: e.target.checked });
             }}
-            className="w-5 h-5 accent-[var(--brand-orange)] rounded cursor-pointer mt-0.5"
+            className="w-5 h-5 shrink-0 accent-[var(--brand-orange)] rounded cursor-pointer mt-0.5"
           />
         </div>
       </div>

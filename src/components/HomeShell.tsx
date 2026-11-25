@@ -12,6 +12,7 @@ import { ProgressView } from '@/components/views/ProgressView';
 import { SessionTranscriptView } from '@/components/views/SessionTranscriptView';
 import { DevicesView } from '@/components/views/DevicesView';
 import { DesktopDashboardView } from '@/components/views/DesktopDashboardView';
+import { SessionsView } from '@/components/views/SessionsView';
 import { SignInView } from '@/components/views/SignInView';
 import { AddChildModal } from '@/components/modals/AddChildModal';
 import { ChangeClassModal } from '@/components/modals/ChangeClassModal';
@@ -40,7 +41,14 @@ const DEFAULT_CHILD_ID = '22222222-2222-2222-2222-222222222222';
 export function HomeShell({ initialTab }: HomeShellProps) {
   const { applyParentTheme, applyRobotTheme } = useTheme();
   const [activeTab, setActiveTabState] = useState<string>(initialTab || 'today');
-  const [selectedChildId, setSelectedChildId] = useState<string>(DEFAULT_CHILD_ID);
+  const [previousTab, setPreviousTab] = useState<string>(initialTab || 'today');
+  const [selectedChildId, setSelectedChildId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('dudu_selected_child_id') || DEFAULT_CHILD_ID;
+    }
+    return DEFAULT_CHILD_ID;
+  });
+  const [hydrated, setHydrated] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(!REQUIRE_LOGIN);
   const [isAuthenticated, setIsAuthenticated] = useState(!REQUIRE_LOGIN);
@@ -48,7 +56,7 @@ export function HomeShell({ initialTab }: HomeShellProps) {
   const [showAddChildModal, setShowAddChildModal] = useState(false);
   const [showChangeClassModal, setShowChangeClassModal] = useState(false);
 
-  // Restore ?tab= and saved selectedChildId on mount
+  // Restore ?tab= and saved selectedChildId once on mount before fetching
   useEffect(() => {
     if (typeof window !== 'undefined') {
       if (!initialTab) {
@@ -56,12 +64,14 @@ export function HomeShell({ initialTab }: HomeShellProps) {
         const qTab = params.get('tab');
         if (qTab && VALID_TABS.has(qTab)) {
           setActiveTabState(qTab);
+          setPreviousTab(qTab);
         }
       }
       const savedChild = localStorage.getItem('dudu_selected_child_id');
       if (savedChild) {
         setSelectedChildId(savedChild);
       }
+      setHydrated(true);
     }
   }, [initialTab]);
 
@@ -82,6 +92,13 @@ export function HomeShell({ initialTab }: HomeShellProps) {
           const data: DashboardData = await res.json();
           setDashboard(data);
           setIsAuthenticated(true);
+          // If requested child was archived or missing, sync localStorage & state to resolved child
+          if (data.child?.id && data.child.id !== targetChild) {
+            setSelectedChildId(data.child.id);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('dudu_selected_child_id', data.child.id);
+            }
+          }
           // Read-only UI theme sync when loading or switching child (never writes back)
           if (data.settings?.theme) applyParentTheme(data.settings.theme);
           if (data.settings?.robot_theme) applyRobotTheme(data.settings.robot_theme);
@@ -96,8 +113,9 @@ export function HomeShell({ initialTab }: HomeShellProps) {
   );
 
   useEffect(() => {
+    if (!hydrated) return;
     fetchDashboard();
-  }, [fetchDashboard]);
+  }, [hydrated, fetchDashboard]);
 
   // Poll dashboard every 30s while active so live robot syncs/sessions appear automatically
   useEffect(() => {
@@ -127,6 +145,7 @@ export function HomeShell({ initialTab }: HomeShellProps) {
   };
 
   const handleOpenSession = (sessionId: string) => {
+    setPreviousTab(activeTab);
     setSelectedSessionId(sessionId);
     setActiveTabState('transcript');
   };
@@ -164,14 +183,18 @@ export function HomeShell({ initialTab }: HomeShellProps) {
     );
   }
 
-  const reviewCount = dashboard?.needsReviewGrades?.length ?? 0;
+  const reviewCount =
+    (dashboard?.needsReviewGrades?.length ?? 0) + (dashboard?.flaggedTurns?.length ?? 0);
+  const resolvedChildId = dashboard?.child?.id || selectedChildId;
   const childName = dashboard?.child?.name || 'Arjun';
   const cbseClass = dashboard?.child?.cbse_class || 3;
   const childrenList = dashboard?.children || [];
+  const hasRobot = Boolean(dashboard?.device);
   const isOnline = dashboard?.device?.online ?? false;
-  const pairedChildId = dashboard?.device?.paired ? (dashboard.device as any).child_id ?? null : null;
+  const pairedChildId = dashboard?.device?.paired ? resolvedChildId : null;
   const selectedSession =
     dashboard?.sessions?.find((s) => s.id === selectedSessionId) || null;
+  const flaggedTurnIds = (dashboard?.flaggedTurns || []).map((f) => f.turn_id);
 
   const renderActiveView = () => {
     if (activeTab === 'transcript') {
@@ -179,7 +202,8 @@ export function HomeShell({ initialTab }: HomeShellProps) {
         <SessionTranscriptView
           session={selectedSession}
           childName={childName}
-          onBack={() => navigateTab('today')}
+          flaggedTurnIds={flaggedTurnIds}
+          onBack={() => navigateTab(previousTab || 'today')}
           onRefresh={() => fetchDashboard()}
         />
       );
@@ -196,7 +220,6 @@ export function HomeShell({ initialTab }: HomeShellProps) {
           />
         );
       case 'overview':
-      case 'sessions':
         return (
           <DesktopDashboardView
             dashboard={dashboard}
@@ -206,20 +229,29 @@ export function HomeShell({ initialTab }: HomeShellProps) {
             onRefresh={() => fetchDashboard()}
           />
         );
+      case 'sessions':
+        return (
+          <SessionsView
+            dashboard={dashboard}
+            onOpenSession={handleOpenSession}
+          />
+        );
       case 'progress':
         return <ProgressView dashboard={dashboard} />;
       case 'review':
         return (
           <ReviewView
             grades={dashboard?.needsReviewGrades || []}
+            flaggedTurns={dashboard?.flaggedTurns || []}
             childName={childName}
+            onOpenSession={handleOpenSession}
             onSuccessReview={() => fetchDashboard()}
           />
         );
       case 'controls':
         return (
           <ControlsView
-            childId={selectedChildId}
+            childId={resolvedChildId}
             childName={childName}
             cbseClass={cbseClass}
             initialSettings={dashboard?.settings}
@@ -227,7 +259,7 @@ export function HomeShell({ initialTab }: HomeShellProps) {
             onOpenChangeClass={() => setShowChangeClassModal(true)}
             onChildUpdated={() => fetchDashboard()}
             onChildRemoved={async () => {
-              const remaining = childrenList.filter((c) => c.id !== selectedChildId);
+              const remaining = childrenList.filter((c) => c.id !== resolvedChildId);
               const nextId = remaining[0]?.id || DEFAULT_CHILD_ID;
               handleSelectChild(nextId);
             }}
@@ -271,10 +303,11 @@ export function HomeShell({ initialTab }: HomeShellProps) {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
         <Navbar
-          childId={selectedChildId}
+          childId={resolvedChildId}
           childName={childName}
           cbseClass={cbseClass}
           childrenList={childrenList}
+          hasRobot={hasRobot}
           isOnline={isOnline}
           reviewCount={reviewCount}
           activeTab={activeTab}

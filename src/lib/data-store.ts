@@ -112,7 +112,7 @@ export interface GradeRecord {
 export interface CommandRecord {
   id: number;
   device_id: string;
-  type: 'say' | 'practice' | 'rewrite' | 'unpair' | 'refresh';
+  type: 'say' | 'practice' | 'rewrite' | 'music' | 'unpair' | 'refresh';
   arg: string;
   status: 'pending' | 'sent' | 'done' | 'expired';
   created_by?: string | null;
@@ -248,6 +248,11 @@ function applyStatePayload(data: any): void {
   }
   if (Array.isArray(data.commands)) {
     memoryStore.commands = data.commands;
+    const maxCmdId = data.commands.reduce(
+      (max: number, c: any) => Math.max(max, Number(c.id) || 0),
+      99
+    );
+    memoryStore.nextCommandId = Math.max(memoryStore.nextCommandId, maxCmdId + 1);
   }
   if (Array.isArray(data.sessions)) {
     for (const s of data.sessions) {
@@ -968,21 +973,23 @@ export const DataStore = {
   },
 
   async getOldestPendingCommand(deviceId: string): Promise<CommandRecord | null> {
-    await ensureStateLoaded();
+    await ensureStateLoaded(true);
     const now = Date.now();
     const expiryThreshold = now - 24 * 3600 * 1000;
 
-    // Check memory store
-    for (const cmd of memoryStore.commands) {
-      if (cmd.device_id === deviceId && cmd.status === 'pending') {
-        if (new Date(cmd.created_at).getTime() < expiryThreshold) {
-          cmd.status = 'expired';
-          continue;
-        }
-        cmd.status = 'sent';
-        await persistState();
-        return cmd;
+    // Check memory store (oldest pending command for this device)
+    const pending = memoryStore.commands
+      .filter((c) => c.device_id === deviceId && c.status === 'pending')
+      .sort((a, b) => a.id - b.id);
+
+    for (const cmd of pending) {
+      if (new Date(cmd.created_at).getTime() < expiryThreshold) {
+        cmd.status = 'expired';
+        continue;
       }
+      cmd.status = 'sent';
+      await persistState();
+      return cmd;
     }
 
     try {
@@ -1009,12 +1016,14 @@ export const DataStore = {
 
   async ackCommand(cmdId: number): Promise<void> {
     if (cmdId <= 0) return;
+    await ensureStateLoaded(true);
 
+    let changed = false;
     for (const cmd of memoryStore.commands) {
-      if (cmd.id === cmdId) {
+      if (cmd.id === cmdId && cmd.status !== 'done') {
         cmd.status = 'done';
         cmd.acked_at = new Date().toISOString();
-        break;
+        changed = true;
       }
     }
 
@@ -1025,12 +1034,27 @@ export const DataStore = {
         .eq('id', cmdId);
     } catch {}
 
-    await persistState();
+    if (changed) {
+      await persistState();
+    }
   },
 
-  async createCommand(deviceId: string, type: 'say' | 'practice' | 'rewrite' | 'unpair' | 'refresh', arg: string, createdBy?: string): Promise<CommandRecord> {
+  async createCommand(
+    deviceId: string,
+    type: 'say' | 'practice' | 'rewrite' | 'music' | 'unpair' | 'refresh',
+    arg: string,
+    createdBy?: string
+  ): Promise<CommandRecord> {
+    await ensureStateLoaded(true);
+    const maxExistingId = memoryStore.commands.reduce(
+      (max, c) => Math.max(max, Number(c.id) || 0),
+      99
+    );
+    const nextId = Math.max(memoryStore.nextCommandId, maxExistingId + 1);
+    memoryStore.nextCommandId = nextId + 1;
+
     const cmd: CommandRecord = {
-      id: memoryStore.nextCommandId++,
+      id: nextId,
       device_id: deviceId,
       type,
       arg,
@@ -1058,7 +1082,7 @@ export const DataStore = {
       }
     } catch {}
 
-    await persistState();
+    await persistState(true);
     return cmd;
   },
 
@@ -1234,6 +1258,15 @@ export const DataStore = {
       await supabaseAdmin.from('flags').insert({ turn_id: turnId, user_id: userId, reason });
     } catch {}
     await persistState();
+  },
+
+  async getFlags(): Promise<Array<{ turn_id: number; user_id: string; reason: string }>> {
+    await ensureStateLoaded();
+    try {
+      const { data, error } = await supabaseAdmin.from('flags').select('*');
+      if (!error && data && data.length > 0) return data;
+    } catch {}
+    return memoryStore.flags;
   },
 
   async getGrades(childId: string, status?: 'needs_review' | 'auto' | 'reviewed'): Promise<GradeRecord[]> {

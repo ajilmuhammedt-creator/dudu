@@ -2,16 +2,24 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Check, X, RotateCcw, ZoomIn, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { DashboardGrade } from '@/lib/dashboard-types';
+import { Check, X, RotateCcw, ZoomIn, AlertTriangle, CheckCircle2, Flag } from 'lucide-react';
+import { DashboardGrade, DashboardData } from '@/lib/dashboard-types';
 
 interface ReviewViewProps {
   grades?: DashboardGrade[];
+  flaggedTurns?: DashboardData['flaggedTurns'];
   childName?: string;
+  onOpenSession?: (sessionId: string) => void;
   onSuccessReview?: () => void;
 }
 
-export function ReviewView({ grades = [], childName = 'Arjun', onSuccessReview }: ReviewViewProps) {
+export function ReviewView({
+  grades = [],
+  flaggedTurns = [],
+  childName = 'Arjun',
+  onOpenSession,
+  onSuccessReview
+}: ReviewViewProps) {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [isZoomed, setIsZoomed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -60,14 +68,52 @@ export function ReviewView({ grades = [], childName = 'Arjun', onSuccessReview }
 
   if (!activeGrade) {
     return (
-      <div className="card p-8 text-center max-w-lg mx-auto my-8">
-        <div className="w-16 h-16 rounded-full bg-[var(--success-green)]/15 text-[var(--success-green)] flex items-center justify-center mx-auto mb-4">
-          <CheckCircle2 className="w-8 h-8" />
+      <div className="max-w-xl mx-auto space-y-6 pb-20 md:pb-8">
+        <div className="card p-8 text-center">
+          <div className="w-16 h-16 rounded-full bg-[var(--success-green)]/15 text-[var(--success-green)] flex items-center justify-center mx-auto mb-4">
+            <CheckCircle2 className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-bold text-[var(--text-primary)]">All caught up!</h2>
+          <p className="text-sm text-[var(--text-muted)] mt-2">
+            No grades waiting for review. Grades EduBuddy is confident about are scored automatically.
+          </p>
         </div>
-        <h2 className="text-xl font-bold text-[var(--text-primary)]">All caught up!</h2>
-        <p className="text-sm text-[var(--text-muted)] mt-2">
-          No grades waiting for review. Grades EduBuddy is confident about are scored automatically.
-        </p>
+
+        {flaggedTurns.length > 0 && (
+          <div className="card p-5 space-y-3">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[var(--error-red)]">
+              <Flag className="w-3.5 h-3.5" />
+              <span>Flagged replies ({flaggedTurns.length})</span>
+            </div>
+            <div className="space-y-2.5">
+              {flaggedTurns.map((f) => (
+                <div
+                  key={`${f.session_id}-${f.turn_id}`}
+                  className="p-3 rounded-xl bg-[var(--input-bg)] border border-[var(--border-card)] space-y-1.5"
+                >
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-[var(--text-primary)]">
+                      {f.subject}
+                      {f.chapter ? ` · ${f.chapter}` : ''}
+                    </span>
+                    {onOpenSession && (
+                      <button
+                        onClick={() => onOpenSession(f.session_id)}
+                        className="text-[var(--study-blue)] font-semibold hover:underline"
+                      >
+                        Open transcript
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-[var(--text-primary)] italic">&ldquo;{f.text}&rdquo;</p>
+                  <div className="text-[11px] text-[var(--error-red)] font-medium">
+                    Reason: {f.reason}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   }

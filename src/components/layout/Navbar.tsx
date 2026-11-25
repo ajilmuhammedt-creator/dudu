@@ -31,6 +31,7 @@ interface NavbarProps {
   childName?: string;
   cbseClass?: number;
   childrenList?: ChildSummary[];
+  hasRobot?: boolean;
   isOnline?: boolean;
   reviewCount?: number;
   activeTab?: string;
@@ -46,6 +47,7 @@ export function Navbar({
   childName = 'Arjun',
   cbseClass = 3,
   childrenList = [],
+  hasRobot = true,
   isOnline = true,
   reviewCount = 0,
   onTabChange,
@@ -99,12 +101,30 @@ export function Navbar({
                 <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)]" />
               </div>
               <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
-                <span
-                  className={`inline-block w-2 h-2 rounded-full ${
-                    isOnline ? 'bg-[#17A34A] animate-pulse' : 'bg-[#6B7280]'
-                  }`}
-                />
-                <span>{isOnline ? 'Robot online' : 'Robot offline'}</span>
+                {!hasRobot ? (
+                  <>
+                    <span className="inline-block w-2 h-2 rounded-full bg-[#6B7280]" />
+                    <span>No robot</span>
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onTabChange?.('devices');
+                      }}
+                      className="text-[var(--brand-orange)] font-semibold hover:underline ml-0.5"
+                    >
+                      · Pair a robot
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span
+                      className={`inline-block w-2 h-2 rounded-full ${
+                        isOnline ? 'bg-[#17A34A] animate-pulse' : 'bg-[#6B7280]'
+                      }`}
+                    />
+                    <span>{isOnline ? 'Robot online' : 'Robot offline'}</span>
+                  </>
+                )}
               </div>
             </div>
           </button>

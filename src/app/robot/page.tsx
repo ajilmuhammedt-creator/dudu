@@ -45,6 +45,7 @@ export default function RobotScreenPage() {
   const [keypadInput, setKeypadInput] = useState('63');
   const [pairingCode, setPairingCode] = useState('563 566');
   const [isPaired, setIsPaired] = useState(true);
+  const [deviceIp, setDeviceIp] = useState<string>('—');
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -78,6 +79,7 @@ export default function RobotScreenPage() {
         if (res.ok) {
           const data = await res.json();
           setIsPaired(data.paired);
+          if (data.ip) setDeviceIp(data.ip);
         }
         // Also check sync for code if unpaired
         const syncRes = await fetch('/api/device/sync', {
@@ -374,7 +376,7 @@ export default function RobotScreenPage() {
                 <Home className="w-3.5 h-3.5" /> Back
               </button>
               <span className="text-xs font-bold uppercase tracking-wider opacity-75">
-                Give and Take · Maths Mela (Ch 12)
+                Demo preview · Give and Take
               </span>
               <button
                 onClick={() => setMode('exam_keypad')}
@@ -708,7 +710,7 @@ export default function RobotScreenPage() {
         <span>·</span>
         <span>Active Robot Theme: <strong className="capitalize">{robotTheme}</strong></span>
         <span>·</span>
-        <span>Hardware: ESP32-S3 (192.168.1.107)</span>
+        <span>Hardware: ESP32-S3 ({deviceIp})</span>
       </div>
     </div>
   );

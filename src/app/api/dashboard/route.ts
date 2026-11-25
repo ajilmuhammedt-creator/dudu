@@ -32,7 +32,22 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url);
-  const childId = searchParams.get('child_id') || '22222222-2222-2222-2222-222222222222';
+  const requestedChildId = searchParams.get('child_id') || '22222222-2222-2222-2222-222222222222';
+
+  const children = await DataStore.getChildrenByFamily('11111111-1111-1111-1111-111111111111');
+  const requestedChild = children.find((c) => c.id === requestedChildId);
+  // Fall back to first active child if requested child is missing or archived
+  const resolvedChild = requestedChild || children[0] || {
+    id: '22222222-2222-2222-2222-222222222222',
+    family_id: '11111111-1111-1111-1111-111111111111',
+    name: 'Arjun',
+    cbse_class: 3,
+    avatar: '👦',
+    archived: false,
+    created_at: new Date().toISOString()
+  };
+
+  const childId = resolvedChild.id;
 
   const ownsChild = await DataStore.userOwnsChild(userId, childId);
   if (!ownsChild) {
@@ -42,17 +57,20 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const [child, children, settings, rawDevice, sessions, grades, events] = await Promise.all([
-    DataStore.getChildById(childId),
-    DataStore.getChildrenByFamily('11111111-1111-1111-1111-111111111111'),
+  const [settings, rawDevice, sessions, grades, events, flags] = await Promise.all([
     DataStore.getChildSettings(childId),
     DataStore.getDeviceByUid('DUDU-90932C9FC114'),
     DataStore.getSessions(childId),
     DataStore.getGrades(childId),
-    DataStore.getEvents(childId)
+    DataStore.getEvents(childId),
+    DataStore.getFlags()
   ]);
 
-  const device = rawDevice
+  // Only attach device if it is actually paired to THIS child
+  const deviceBelongsToChild =
+    rawDevice && Boolean(rawDevice.family_id) && rawDevice.child_id === childId;
+
+  const device = deviceBelongsToChild && rawDevice
     ? {
         id: rawDevice.id,
         device_uid: rawDevice.device_uid,
@@ -61,7 +79,7 @@ export async function GET(req: NextRequest) {
         rssi: rawDevice.rssi,
         firmware: rawDevice.firmware,
         last_seen: rawDevice.last_seen,
-        paired: Boolean(rawDevice.family_id && rawDevice.child_id),
+        paired: true,
         online: rawDevice.last_seen
           ? (Date.now() - new Date(rawDevice.last_seen).getTime()) / 1000 <= 180
           : false
@@ -78,13 +96,15 @@ export async function GET(req: NextRequest) {
   const kolkataMidnight = getKolkataMidnightToday();
   const todayKey = formatKolkataDayKey(now);
 
-  // Enrich sessions with turns and events
+  // Enrich sessions with turns and events, normalizing empty subjects/chapters
   const enrichedSessions = await Promise.all(
     sessions.map(async (s) => {
       const turns = await DataStore.getTurns(s.id);
       const sessionEvents = events.filter((e) => e.session_id === s.id);
       return {
         ...s,
+        subject: (s.subject || '').trim() || 'General',
+        chapter: (s.chapter || '').trim(),
         watch_checks: s.watch_checks ?? 0,
         watch_moving: s.watch_moving ?? 0,
         active_pct: s.active_pct ?? -1,
@@ -98,6 +118,37 @@ export async function GET(req: NextRequest) {
     })
   );
 
+  // Build flagged turns list for this child
+  const flagMap = new Map<number, string>();
+  for (const f of flags) {
+    flagMap.set(f.turn_id, f.reason);
+  }
+  const flaggedTurns: Array<{
+    turn_id: number;
+    session_id: string;
+    text: string;
+    subject: string;
+    chapter: string;
+    reason: string;
+    at: string;
+  }> = [];
+
+  for (const s of enrichedSessions) {
+    for (const t of s.turns) {
+      if (flagMap.has(t.id)) {
+        flaggedTurns.push({
+          turn_id: t.id,
+          session_id: s.id,
+          text: t.text,
+          subject: s.subject,
+          chapter: s.chapter,
+          reason: flagMap.get(t.id) || '',
+          at: t.at
+        });
+      }
+    }
+  }
+
   const todaySessions = enrichedSessions.filter(
     (s) => new Date(s.started_at) >= kolkataMidnight || formatKolkataDayKey(new Date(s.started_at)) === todayKey
   );
@@ -106,7 +157,6 @@ export async function GET(req: NextRequest) {
   const todayExams = todaySessions.filter((s) => s.score_total !== null && s.score_total > 0);
   const latestTodayExam = todayExams[0] || null;
 
-  // Today's attention aggregation
   const todayDistractions = todaySessions.reduce((acc, s) => acc + (s.distractions ?? 0), 0);
   const todaySleepyChecks = todaySessions.reduce((acc, s) => acc + (s.sleepy_checks ?? 0), 0);
   const todayActiveSessions = todaySessions.filter((s) => (s.active_pct ?? -1) >= 0);
@@ -119,7 +169,6 @@ export async function GET(req: NextRequest) {
     (e) => new Date(e.at) >= kolkataMidnight || formatKolkataDayKey(new Date(e.at)) === todayKey
   );
 
-  // Week & Last Week windows (7 days)
   const sevenDaysAgo = new Date(kolkataMidnight.getTime() - 6 * 86400000);
   const fourteenDaysAgo = new Date(kolkataMidnight.getTime() - 13 * 86400000);
 
@@ -144,7 +193,6 @@ export async function GET(req: NextRequest) {
   const weekDistractions = weekSessions.reduce((acc, s) => acc + (s.distractions ?? 0), 0);
   const lastWeekDistractions = lastWeekSessions.reduce((acc, s) => acc + (s.distractions ?? 0), 0);
 
-  // Build 7-day chart (oldest to newest ending today)
   const buildDailySeries = (daysCount: number) => {
     const series = [];
     for (let i = daysCount - 1; i >= 0; i--) {
@@ -172,7 +220,7 @@ export async function GET(req: NextRequest) {
     return series;
   };
 
-  // Subject & Chapter mastery from real sessions + grades
+  // Subject & Chapter mastery from real sessions
   const subjectMap = new Map<
     string,
     {
@@ -184,22 +232,24 @@ export async function GET(req: NextRequest) {
   >();
 
   for (const s of enrichedSessions) {
-    if (!subjectMap.has(s.subject)) {
-      subjectMap.set(s.subject, {
-        subject: s.subject,
+    const subj = (s.subject || '').trim() || 'General';
+    if (!subjectMap.has(subj)) {
+      subjectMap.set(subj, {
+        subject: subj,
         sessionsCount: 0,
         examsCount: 0,
         chapters: new Map()
       });
     }
-    const entry = subjectMap.get(s.subject)!;
+    const entry = subjectMap.get(subj)!;
     entry.sessionsCount += 1;
     if (s.score_total !== null && s.score_total > 0) {
       entry.examsCount += 1;
-      const ch = entry.chapters.get(s.chapter) || { chapter: s.chapter, right: 0, total: 0 };
+      const chName = (s.chapter || '').trim() || 'General';
+      const ch = entry.chapters.get(chName) || { chapter: chName, right: 0, total: 0 };
       ch.right += s.score_right || 0;
       ch.total += s.score_total;
-      entry.chapters.set(s.chapter, ch);
+      entry.chapters.set(chName, ch);
     }
   }
 
@@ -221,7 +271,6 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  // Attention insight
   const sleepyEvents = events.filter((e) => e.type === 'sleepy_check' || e.type === 'sleepy_yes');
   let attentionInsight: string | null = null;
   if (sleepyEvents.length > 0) {
@@ -247,12 +296,7 @@ export async function GET(req: NextRequest) {
   const needsReviewGrades = grades.filter((g) => g.status === 'needs_review');
 
   return NextResponse.json({
-    child: child || {
-      id: childId,
-      name: 'Arjun',
-      cbse_class: 3,
-      avatar: '👦'
-    },
+    child: resolvedChild,
     children,
     settings,
     device,
@@ -284,6 +328,7 @@ export async function GET(req: NextRequest) {
     attentionInsight,
     sessions: enrichedSessions,
     grades,
-    needsReviewGrades
+    needsReviewGrades,
+    flaggedTurns
   });
 }
