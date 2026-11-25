@@ -377,16 +377,45 @@ async function ensureStateLoaded(force: boolean = false): Promise<void> {
     return false;
   };
 
+  const downloadStorageText = async (objectName: string): Promise<string | null> => {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (supabaseUrl && serviceRoleKey) {
+      try {
+        const res = await fetch(
+          `${supabaseUrl}/storage/v1/object/authenticated/${STATE_BUCKET}/${objectName}?t=${Date.now()}`,
+          {
+            headers: {
+              Authorization: `Bearer ${serviceRoleKey}`,
+              apikey: serviceRoleKey
+            },
+            cache: 'no-store'
+          }
+        );
+        if (res.ok) {
+          return await res.text();
+        }
+        return null;
+      } catch {}
+    }
+    try {
+      const { data, error } = await supabaseAdmin.storage
+        .from(STATE_BUCKET)
+        .download(objectName);
+      if (!error && data) {
+        return await data.text();
+      }
+    } catch {}
+    return null;
+  };
+
   const loadSupabaseStorage = async () => {
     try {
       const domainResults = await Promise.all(
         ALL_DOMAINS.map(async (domain) => {
           try {
-            const { data, error } = await supabaseAdmin.storage
-              .from(STATE_BUCKET)
-              .download(DOMAIN_OBJECTS[domain]);
-            if (!error && data) {
-              const text = await data.text();
+            const text = await downloadStorageText(DOMAIN_OBJECTS[domain]);
+            if (text) {
               return { domain, parsed: JSON.parse(text), text };
             }
           } catch {}
@@ -400,11 +429,8 @@ async function ensureStateLoaded(force: boolean = false): Promise<void> {
       // Fallback to legacy monolithic device-state.json for any domain not yet split
       if (!allDomainsFound) {
         try {
-          const { data, error } = await supabaseAdmin.storage
-            .from(STATE_BUCKET)
-            .download(STATE_OBJECT);
-          if (!error && data) {
-            const text = await data.text();
+          const text = await downloadStorageText(STATE_OBJECT);
+          if (text) {
             applyStatePayload(JSON.parse(text));
             loadedAny = true;
           }
