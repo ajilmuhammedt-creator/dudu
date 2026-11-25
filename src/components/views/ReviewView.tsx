@@ -96,14 +96,35 @@ export function ReviewView({
                       {f.subject}
                       {f.chapter ? ` · ${f.chapter}` : ''}
                     </span>
-                    {onOpenSession && (
+                    <div className="flex items-center gap-3">
+                      {onOpenSession && (
+                        <button
+                          onClick={() => onOpenSession(f.session_id)}
+                          className="text-[var(--study-blue)] font-semibold hover:underline"
+                        >
+                          Open transcript
+                        </button>
+                      )}
                       <button
-                        onClick={() => onOpenSession(f.session_id)}
-                        className="text-[var(--study-blue)] font-semibold hover:underline"
+                        onClick={async () => {
+                          try {
+                            await fetch('/api/transcript/actions', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                action: 'dismiss_flag',
+                                session_id: f.session_id,
+                                turn_id: f.turn_id
+                              })
+                            });
+                            onSuccessReview?.();
+                          } catch {}
+                        }}
+                        className="text-[var(--text-muted)] hover:text-[var(--text-primary)] font-semibold"
                       >
-                        Open transcript
+                        Dismiss
                       </button>
-                    )}
+                    </div>
                   </div>
                   <p className="text-xs text-[var(--text-primary)] italic">&ldquo;{f.text}&rdquo;</p>
                   <div className="text-[11px] text-[var(--error-red)] font-medium">

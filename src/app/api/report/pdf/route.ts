@@ -92,7 +92,7 @@ export async function GET(req: NextRequest) {
             weekExams.length) *
             100
         )}%`
-      : '—';
+      : '-';
 
   const distractions = weekSessions.reduce((acc, s) => acc + (s.distractions ?? s.off_topic ?? 0), 0);
   const sleepyChecks = weekSessions.reduce((acc, s) => acc + (s.sleepy_checks ?? 0), 0);
@@ -102,12 +102,12 @@ export async function GET(req: NextRequest) {
       ? `${Math.round(
           activeSessions.reduce((acc, s) => acc + (s.active_pct ?? 0), 0) / activeSessions.length
         )}%`
-      : '—';
+      : '-';
 
   const insight =
     weekSessions.length === 0
       ? `No study sessions recorded for ${childName} this week yet.`
-      : `${weekSessions.length} session(s) recorded this week · ${distractions} distraction(s) · ${sleepyChecks} sleepy check(s) · Active ${activePctText}.`;
+      : `${weekSessions.length} session(s) recorded this week | ${distractions} distraction(s) | ${sleepyChecks} sleepy check(s) | Active ${activePctText}.`;
 
   const safeSlug = childName.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'student';
 

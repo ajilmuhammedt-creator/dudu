@@ -56,15 +56,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { child, settings } = await DataStore.createChild({
-    family_id: DEMO_FAMILY_ID,
-    name: parsed.data.name,
-    cbse_class: parsed.data.cbse_class,
-    avatar: parsed.data.avatar,
-    subjects: parsed.data.subjects
-  });
+  try {
+    const { child, settings } = await DataStore.createChild({
+      family_id: DEMO_FAMILY_ID,
+      name: parsed.data.name,
+      cbse_class: parsed.data.cbse_class,
+      avatar: parsed.data.avatar,
+      subjects: parsed.data.subjects
+    });
 
-  return NextResponse.json({ success: true, child, settings });
+    return NextResponse.json({ success: true, child, settings });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: 'create_failed', message: err?.message || 'Failed to save student' },
+      { status: 500 }
+    );
+  }
 }
 
 async function handleArchive(userId: string, childId: string) {

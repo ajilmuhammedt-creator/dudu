@@ -136,6 +136,7 @@ export function SessionTranscriptView({
         body: JSON.stringify({
           action: 'flag',
           turn_id: flagTurnId,
+          session_id: session.id,
           reason: flagReason
         })
       });

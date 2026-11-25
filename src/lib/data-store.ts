@@ -141,7 +141,7 @@ class MemoryStore {
   grades = new Map<string, GradeRecord>();
   commands: CommandRecord[] = [];
   events: EventRecord[] = [];
-  flags: Array<{ turn_id: number; user_id: string; reason: string }> = [];
+  flags: Array<{ turn_id: number; user_id: string; reason: string; session_id?: string }> = [];
   nextCommandId = 100;
   nextTurnId = 1000;
   nextEventId = 500;
@@ -219,6 +219,25 @@ const STATE_BUCKET = 'dudu-state';
 const STATE_OBJECT = 'device-state.json';
 const LOCAL_STATE_FILE = '/tmp/dudu-device-state.json';
 
+type StateDomain = 'children' | 'settings' | 'devices' | 'sessions' | 'commands' | 'flags';
+const ALL_DOMAINS: StateDomain[] = ['children', 'settings', 'devices', 'sessions', 'commands', 'flags'];
+const DOMAIN_OBJECTS: Record<StateDomain, string> = {
+  children: 'children.json',
+  settings: 'settings.json',
+  devices: 'devices.json',
+  sessions: 'sessions.json',
+  commands: 'commands.json',
+  flags: 'flags.json'
+};
+const LOCAL_DOMAIN_FILES: Record<StateDomain, string> = {
+  children: '/tmp/dudu-state-children.json',
+  settings: '/tmp/dudu-state-settings.json',
+  devices: '/tmp/dudu-state-devices.json',
+  sessions: '/tmp/dudu-state-sessions.json',
+  commands: '/tmp/dudu-state-commands.json',
+  flags: '/tmp/dudu-state-flags.json'
+};
+
 let stateInitialized = false;
 let lastSyncTime = 0;
 
@@ -279,6 +298,51 @@ function applyStatePayload(data: any): void {
   }
 }
 
+function buildDomainPayload(domain: StateDomain): Record<string, any> {
+  const updated_at = new Date().toISOString();
+  switch (domain) {
+    case 'children':
+      return {
+        children: Array.from(memoryStore.children.values()),
+        familyMembers: Array.from(memoryStore.familyMembers.values()),
+        updated_at
+      };
+    case 'settings':
+      return {
+        childSettings: Array.from(memoryStore.childSettings.values()),
+        updated_at
+      };
+    case 'devices':
+      return {
+        devices: Array.from(memoryStore.devices.values()),
+        updated_at
+      };
+    case 'commands':
+      return {
+        commands: memoryStore.commands,
+        updated_at
+      };
+    case 'flags':
+      return {
+        flags: memoryStore.flags,
+        updated_at
+      };
+    case 'sessions': {
+      const turnsObj: Record<string, TurnRecord[]> = {};
+      for (const [sid, list] of memoryStore.turns.entries()) {
+        turnsObj[sid] = list;
+      }
+      return {
+        sessions: Array.from(memoryStore.sessions.values()),
+        turns: turnsObj,
+        grades: Array.from(memoryStore.grades.values()),
+        events: memoryStore.events,
+        updated_at
+      };
+    }
+  }
+}
+
 async function ensureStateLoaded(force: boolean = false): Promise<void> {
   const now = Date.now();
   // On Vercel serverless, always fetch fresh state from Supabase Storage unless forced skip
@@ -290,10 +354,21 @@ async function ensureStateLoaded(force: boolean = false): Promise<void> {
   const loadLocal = async () => {
     try {
       const fs = await import('fs');
+      let loadedAny = false;
       if (fs.existsSync(LOCAL_STATE_FILE)) {
         const content = fs.readFileSync(LOCAL_STATE_FILE, 'utf-8');
-        const data = JSON.parse(content);
-        applyStatePayload(data);
+        applyStatePayload(JSON.parse(content));
+        loadedAny = true;
+      }
+      for (const domain of ALL_DOMAINS) {
+        const file = LOCAL_DOMAIN_FILES[domain];
+        if (fs.existsSync(file)) {
+          const content = fs.readFileSync(file, 'utf-8');
+          applyStatePayload(JSON.parse(content));
+          loadedAny = true;
+        }
+      }
+      if (loadedAny) {
         stateInitialized = true;
         lastSyncTime = now;
         return true;
@@ -304,18 +379,52 @@ async function ensureStateLoaded(force: boolean = false): Promise<void> {
 
   const loadSupabaseStorage = async () => {
     try {
-      const { data, error } = await supabaseAdmin.storage.from(STATE_BUCKET).download(STATE_OBJECT);
-      if (!error && data) {
-        const text = await data.text();
-        const parsed = JSON.parse(text);
-        applyStatePayload(parsed);
+      const domainResults = await Promise.all(
+        ALL_DOMAINS.map(async (domain) => {
+          try {
+            const { data, error } = await supabaseAdmin.storage
+              .from(STATE_BUCKET)
+              .download(DOMAIN_OBJECTS[domain]);
+            if (!error && data) {
+              const text = await data.text();
+              return { domain, parsed: JSON.parse(text), text };
+            }
+          } catch {}
+          return { domain, parsed: null, text: null };
+        })
+      );
+
+      const allDomainsFound = domainResults.every((r) => r.parsed !== null);
+      let loadedAny = domainResults.some((r) => r.parsed !== null);
+
+      // Fallback to legacy monolithic device-state.json for any domain not yet split
+      if (!allDomainsFound) {
+        try {
+          const { data, error } = await supabaseAdmin.storage
+            .from(STATE_BUCKET)
+            .download(STATE_OBJECT);
+          if (!error && data) {
+            const text = await data.text();
+            applyStatePayload(JSON.parse(text));
+            loadedAny = true;
+          }
+        } catch {}
+      }
+
+      // Apply per-domain payloads after legacy payload so split domains take precedence
+      for (const res of domainResults) {
+        if (res.parsed) {
+          applyStatePayload(res.parsed);
+          try {
+            const fs = await import('fs');
+            fs.writeFileSync(LOCAL_DOMAIN_FILES[res.domain], res.text!, 'utf-8');
+          } catch {}
+        }
+      }
+
+      if (loadedAny) {
         stateInitialized = true;
         lastSyncTime = now;
-
-        try {
-          const fs = await import('fs');
-          fs.writeFileSync(LOCAL_STATE_FILE, text, 'utf-8');
-        } catch {}
         return true;
       }
     } catch {}
@@ -334,47 +443,42 @@ async function ensureStateLoaded(force: boolean = false): Promise<void> {
   lastSyncTime = now;
 }
 
-async function persistState(throwOnStorageError: boolean = false): Promise<void> {
-  const turnsObj: Record<string, TurnRecord[]> = {};
-  for (const [sid, list] of memoryStore.turns.entries()) {
-    turnsObj[sid] = list;
-  }
-
-  const payload = {
-    children: Array.from(memoryStore.children.values()),
-    devices: Array.from(memoryStore.devices.values()),
-    childSettings: Array.from(memoryStore.childSettings.values()),
-    familyMembers: Array.from(memoryStore.familyMembers.values()),
-    commands: memoryStore.commands,
-    sessions: Array.from(memoryStore.sessions.values()),
-    turns: turnsObj,
-    grades: Array.from(memoryStore.grades.values()),
-    events: memoryStore.events,
-    flags: memoryStore.flags,
-    updated_at: new Date().toISOString()
-  };
-  const str = JSON.stringify(payload, null, 2);
-
-  try {
-    const fs = await import('fs');
-    fs.writeFileSync(LOCAL_STATE_FILE, str, 'utf-8');
-  } catch {}
-
+async function persistDomains(
+  domains: StateDomain[],
+  throwOnStorageError: boolean = false
+): Promise<void> {
   const hasRealSupabase = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
-  try {
-    const { error } = await supabaseAdmin.storage.from(STATE_BUCKET).upload(STATE_OBJECT, Buffer.from(str), {
-      upsert: true,
-      contentType: 'application/json',
-      cacheControl: '0'
-    });
-    if (error && throwOnStorageError && hasRealSupabase) {
-      throw new Error(`Storage persist failed: ${error.message}`);
-    }
-  } catch (err) {
-    if (throwOnStorageError && hasRealSupabase) throw err;
-  }
+  const fs = await import('fs');
+
+  await Promise.all(
+    domains.map(async (domain) => {
+      const str = JSON.stringify(buildDomainPayload(domain), null, 2);
+      try {
+        fs.writeFileSync(LOCAL_DOMAIN_FILES[domain], str, 'utf-8');
+      } catch {}
+
+      try {
+        const { error } = await supabaseAdmin.storage
+          .from(STATE_BUCKET)
+          .upload(DOMAIN_OBJECTS[domain], Buffer.from(str), {
+            upsert: true,
+            contentType: 'application/json',
+            cacheControl: '0'
+          });
+        if (error && throwOnStorageError && hasRealSupabase) {
+          throw new Error(`Storage persist (${domain}) failed: ${error.message}`);
+        }
+      } catch (err) {
+        if (throwOnStorageError && hasRealSupabase) throw err;
+      }
+    })
+  );
 
   lastSyncTime = Date.now();
+}
+
+async function persistState(throwOnStorageError: boolean = false): Promise<void> {
+  await persistDomains(ALL_DOMAINS, throwOnStorageError);
 }
 
 /**
@@ -439,7 +543,7 @@ export const DataStore = {
       } catch {}
 
       memoryStore.devices.set(existing.id, updated);
-      await persistState();
+      await persistDomains(['devices']);
       return { device: updated, isNew: false };
     }
 
@@ -465,7 +569,7 @@ export const DataStore = {
     } catch {}
 
     memoryStore.devices.set(newDevice.id, newDevice);
-    await persistState();
+    await persistDomains(['devices']);
     return { device: newDevice, isNew: true };
   },
 
@@ -548,7 +652,7 @@ export const DataStore = {
     } catch {}
 
     memoryStore.devices.set(d.id, updated);
-    await persistState();
+    await persistDomains(['devices']);
     return updated;
   },
 
@@ -578,7 +682,7 @@ export const DataStore = {
     } catch {}
 
     memoryStore.devices.set(d.id, updated);
-    await persistState();
+    await persistDomains(['devices']);
     return updated;
   },
 
@@ -624,7 +728,7 @@ export const DataStore = {
     } catch {}
 
     memoryStore.devices.set(d.id, updated);
-    await persistState();
+    await persistDomains(['devices']);
     return updated;
   },
 
@@ -668,7 +772,7 @@ export const DataStore = {
     avatar?: string;
     subjects?: string[];
   }): Promise<{ child: ChildRecord; settings: ChildSettingsRecord }> {
-    await ensureStateLoaded();
+    await ensureStateLoaded(true);
     const childId = crypto.randomUUID();
     const now = new Date().toISOString();
 
@@ -713,7 +817,15 @@ export const DataStore = {
       await supabaseAdmin.from('child_settings').insert(settings);
     } catch {}
 
-    await persistState();
+    await persistDomains(['children', 'settings'], true);
+
+    if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      await ensureStateLoaded(true);
+      if (!memoryStore.children.has(childId)) {
+        throw new Error('Child persistence verification failed');
+      }
+    }
+
     return { child, settings };
   },
 
@@ -788,7 +900,7 @@ export const DataStore = {
     } catch {}
 
     memoryStore.childSettings.set(childId, updatedSettings);
-    await persistState(true);
+    await persistDomains(['children', 'settings'], true);
     return { child: updatedChild, settings: updatedSettings };
   },
 
@@ -814,7 +926,7 @@ export const DataStore = {
         .eq('id', d.id);
     } catch {}
 
-    await persistState(true);
+    await persistDomains(['children'], true);
     return updated;
   },
 
@@ -843,7 +955,7 @@ export const DataStore = {
         .eq('id', childId);
     } catch {}
 
-    await persistState(true);
+    await persistDomains(['children'], true);
     return updated;
   },
 
@@ -897,7 +1009,7 @@ export const DataStore = {
     } catch {}
 
     memoryStore.childSettings.set(childId, updated);
-    await persistState();
+    await persistDomains(['settings']);
     return updated;
   },
 
@@ -911,7 +1023,7 @@ export const DataStore = {
         role
       });
     } catch {}
-    await persistState();
+    await persistDomains(['children']);
   },
 
   async isUserInFamily(userId: string, familyId: string): Promise<boolean> {
@@ -988,7 +1100,7 @@ export const DataStore = {
         continue;
       }
       cmd.status = 'sent';
-      await persistState();
+      await persistDomains(['commands']);
       return cmd;
     }
 
@@ -1035,7 +1147,7 @@ export const DataStore = {
     } catch {}
 
     if (changed) {
-      await persistState();
+      await persistDomains(['commands']);
     }
   },
 
@@ -1082,7 +1194,7 @@ export const DataStore = {
       }
     } catch {}
 
-    await persistState(true);
+    await persistDomains(['commands'], true);
     return cmd;
   },
 
@@ -1192,7 +1304,7 @@ export const DataStore = {
       await supabaseAdmin.from('sessions').insert(fullSession);
     } catch {}
 
-    await persistState();
+    await persistDomains(['sessions']);
     return { sessionId, needsReviewCount };
   },
 
@@ -1248,19 +1360,43 @@ export const DataStore = {
     try {
       await supabaseAdmin.from('turns').delete().eq('session_id', sessionId);
     } catch {}
-    await persistState();
+    await persistDomains(['sessions']);
   },
 
-  async flagTurn(turnId: number, userId: string, reason: string): Promise<void> {
-    await ensureStateLoaded();
-    memoryStore.flags.push({ turn_id: turnId, user_id: userId, reason });
+  async flagTurn(turnId: number, userId: string, reason: string, sessionId?: string): Promise<void> {
+    await ensureStateLoaded(true);
+    const existingIdx = memoryStore.flags.findIndex(
+      (f) => f.turn_id === turnId && (sessionId ? f.session_id === sessionId : !f.session_id)
+    );
+    const entry = { turn_id: turnId, user_id: userId, reason, ...(sessionId ? { session_id: sessionId } : {}) };
+    if (existingIdx >= 0) {
+      memoryStore.flags[existingIdx] = entry;
+    } else {
+      memoryStore.flags.push(entry);
+    }
     try {
       await supabaseAdmin.from('flags').insert({ turn_id: turnId, user_id: userId, reason });
     } catch {}
-    await persistState();
+    await persistDomains(['flags'], true);
   },
 
-  async getFlags(): Promise<Array<{ turn_id: number; user_id: string; reason: string }>> {
+  async dismissFlag(turnId: number, sessionId?: string): Promise<number> {
+    await ensureStateLoaded(true);
+    const before = memoryStore.flags.length;
+    memoryStore.flags = memoryStore.flags.filter((f) => {
+      if (f.turn_id !== turnId) return true;
+      if (sessionId) {
+        // Remove if it matches this session OR if it's a legacy unscoped flag
+        return Boolean(f.session_id && f.session_id !== sessionId);
+      }
+      return false;
+    });
+    const removed = before - memoryStore.flags.length;
+    await persistDomains(['flags'], true);
+    return removed;
+  },
+
+  async getFlags(): Promise<Array<{ turn_id: number; user_id: string; reason: string; session_id?: string }>> {
     await ensureStateLoaded();
     try {
       const { data, error } = await supabaseAdmin.from('flags').select('*');
@@ -1316,7 +1452,7 @@ export const DataStore = {
         .eq('id', gradeId);
     } catch {}
 
-    await persistState();
+    await persistDomains(['sessions']);
     return updated;
   },
 

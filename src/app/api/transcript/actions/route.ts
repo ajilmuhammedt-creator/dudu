@@ -8,7 +8,13 @@ const actionSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('flag'),
     turn_id: z.number(),
+    session_id: guidSchema.optional(),
     reason: z.string().min(2).max(500)
+  }),
+  z.object({
+    action: z.literal('dismiss_flag'),
+    turn_id: z.number(),
+    session_id: guidSchema.optional()
   }),
   z.object({
     action: z.literal('delete'),
@@ -32,8 +38,13 @@ export async function POST(req: NextRequest) {
   const data = parsed.data;
 
   if (data.action === 'flag') {
-    await DataStore.flagTurn(data.turn_id, 'demo-user-id', data.reason);
+    await DataStore.flagTurn(data.turn_id, 'demo-user-id', data.reason, data.session_id);
     return NextResponse.json({ success: true, message: 'Turn flagged successfully for review.' });
+  }
+
+  if (data.action === 'dismiss_flag') {
+    const removed = await DataStore.dismissFlag(data.turn_id, data.session_id);
+    return NextResponse.json({ success: true, removed, message: 'Flag dismissed.' });
   }
 
   if (data.action === 'delete') {

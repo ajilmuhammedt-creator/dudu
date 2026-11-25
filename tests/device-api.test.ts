@@ -417,4 +417,99 @@ describe('Device API Contract Tests', () => {
     );
     expect(conflictRes.status).toBe(409);
   });
+
+  it('scopes flags by session_id + turn_id and supports dismiss_flag', async () => {
+    const { POST: actionsPost } = await import('@/app/api/transcript/actions/route');
+    const { POST: sessionPost } = await import('@/app/api/device/session/route');
+    const { GET: dashboardGet } = await import('@/app/api/dashboard/route');
+
+    const now = Math.floor(Date.now() / 1000);
+    const createdSessionIds: string[] = [];
+
+    // Create two sessions that both use turn_id 1000
+    for (const label of ['First', 'Second']) {
+      const res = await sessionPost(
+        new NextRequest('http://localhost:3000/api/device/session', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer DUDU-90932C9FC114'
+          },
+          body: JSON.stringify({
+            mode: 'qa',
+            subject: 'Science',
+            started_at: now - 300,
+            ended_at: now,
+            minutes: 5,
+            turns: [
+              { s: 'robot', t: `${label} reply`, at: now }
+            ]
+          })
+        })
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      createdSessionIds.push(body.session_id);
+    }
+
+    const [sessionA, sessionB] = createdSessionIds;
+    expect(sessionA).not.toBe(sessionB);
+
+    const dash0 = await (
+      await dashboardGet(
+        new NextRequest('http://localhost:3000/api/dashboard?child_id=22222222-2222-2222-2222-222222222222')
+      )
+    ).json();
+    const sessAObj = (dash0.sessions || []).find((s: any) => s.id === sessionA);
+    expect(sessAObj?.turns?.length).toBeGreaterThan(0);
+    const turnIdA = sessAObj.turns[0].id;
+
+    // Flag turnIdA ONLY on sessionA
+    const flagRes = await actionsPost(
+      new NextRequest('http://localhost:3000/api/transcript/actions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'flag',
+          turn_id: turnIdA,
+          session_id: sessionA,
+          reason: 'Confusing explanation'
+        })
+      })
+    );
+    expect(flagRes.status).toBe(200);
+
+    const dash1 = await (
+      await dashboardGet(
+        new NextRequest('http://localhost:3000/api/dashboard?child_id=22222222-2222-2222-2222-222222222222')
+      )
+    ).json();
+    const flagged = (dash1.flaggedTurns || []).filter((f: any) => f.turn_id === turnIdA);
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0].session_id).toBe(sessionA);
+
+    // Dismiss flag on sessionA
+    const dismissRes = await actionsPost(
+      new NextRequest('http://localhost:3000/api/transcript/actions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'dismiss_flag',
+          turn_id: turnIdA,
+          session_id: sessionA
+        })
+      })
+    );
+    expect(dismissRes.status).toBe(200);
+
+    const dash2 = await (
+      await dashboardGet(
+        new NextRequest('http://localhost:3000/api/dashboard?child_id=22222222-2222-2222-2222-222222222222')
+      )
+    ).json();
+    const remaining = (dash2.flaggedTurns || []).filter(
+      (f: any) => f.session_id === sessionA && f.turn_id === turnIdA
+    );
+    expect(remaining).toHaveLength(0);
+  });
 });

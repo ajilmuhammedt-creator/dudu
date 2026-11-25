@@ -8,6 +8,10 @@ import { DashboardData, DashboardSession } from '@/lib/dashboard-types';
 interface SessionsViewProps {
   dashboard: DashboardData | null;
   onOpenSession: (sessionId: string) => void;
+  modeFilter?: string;
+  onModeFilterChange?: (mode: string) => void;
+  subjectFilter?: string;
+  onSubjectFilterChange?: (subject: string) => void;
 }
 
 function formatKolkataDayHeader(iso: string): string {
@@ -36,9 +40,21 @@ function formatKolkataTime(iso: string): string {
   }
 }
 
-export function SessionsView({ dashboard, onOpenSession }: SessionsViewProps) {
-  const [modeFilter, setModeFilter] = useState<string>('all');
-  const [subjectFilter, setSubjectFilter] = useState<string>('all');
+export function SessionsView({
+  dashboard,
+  onOpenSession,
+  modeFilter: controlledModeFilter,
+  onModeFilterChange,
+  subjectFilter: controlledSubjectFilter,
+  onSubjectFilterChange
+}: SessionsViewProps) {
+  const [localModeFilter, setLocalModeFilter] = useState<string>('all');
+  const [localSubjectFilter, setLocalSubjectFilter] = useState<string>('all');
+
+  const modeFilter = controlledModeFilter ?? localModeFilter;
+  const setModeFilter = onModeFilterChange ?? setLocalModeFilter;
+  const subjectFilter = controlledSubjectFilter ?? localSubjectFilter;
+  const setSubjectFilter = onSubjectFilterChange ?? setLocalSubjectFilter;
 
   const childName = dashboard?.child?.name || 'Arjun';
   const allSessions = dashboard?.sessions || [];

@@ -118,10 +118,15 @@ export async function GET(req: NextRequest) {
     })
   );
 
-  // Build flagged turns list for this child
-  const flagMap = new Map<number, string>();
+  // Build flagged turns list for this child, scoped by session_id + turn_id
+  const scopedFlagMap = new Map<string, string>();
+  const legacyFlagMap = new Map<number, string>();
   for (const f of flags) {
-    flagMap.set(f.turn_id, f.reason);
+    if (f.session_id) {
+      scopedFlagMap.set(`${f.session_id}:${f.turn_id}`, f.reason);
+    } else {
+      legacyFlagMap.set(f.turn_id, f.reason);
+    }
   }
   const flaggedTurns: Array<{
     turn_id: number;
@@ -135,14 +140,15 @@ export async function GET(req: NextRequest) {
 
   for (const s of enrichedSessions) {
     for (const t of s.turns) {
-      if (flagMap.has(t.id)) {
+      const reason = scopedFlagMap.get(`${s.id}:${t.id}`) ?? legacyFlagMap.get(t.id);
+      if (reason !== undefined) {
         flaggedTurns.push({
           turn_id: t.id,
           session_id: s.id,
           text: t.text,
           subject: s.subject,
           chapter: s.chapter,
-          reason: flagMap.get(t.id) || '',
+          reason,
           at: t.at
         });
       }

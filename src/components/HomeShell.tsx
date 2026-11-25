@@ -49,7 +49,10 @@ export function HomeShell({ initialTab }: HomeShellProps) {
     return DEFAULT_CHILD_ID;
   });
   const [hydrated, setHydrated] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [sessionModeFilter, setSessionModeFilter] = useState<string>('all');
+  const [sessionSubjectFilter, setSessionSubjectFilter] = useState<string>('all');
   const [authChecked, setAuthChecked] = useState(!REQUIRE_LOGIN);
   const [isAuthenticated, setIsAuthenticated] = useState(!REQUIRE_LOGIN);
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
@@ -107,6 +110,7 @@ export function HomeShell({ initialTab }: HomeShellProps) {
         // Network error
       } finally {
         setAuthChecked(true);
+        setInitialLoading(false);
       }
     },
     [selectedChildId, applyParentTheme, applyRobotTheme]
@@ -163,7 +167,7 @@ export function HomeShell({ initialTab }: HomeShellProps) {
     setDashboard(null);
   };
 
-  if (REQUIRE_LOGIN && !authChecked) {
+  if ((REQUIRE_LOGIN && !authChecked) || !hydrated || (initialLoading && !dashboard)) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[var(--bg-page)] text-[var(--text-primary)] gap-3">
         <Loader2 className="w-7 h-7 animate-spin text-[var(--brand-orange)]" />
@@ -194,7 +198,9 @@ export function HomeShell({ initialTab }: HomeShellProps) {
   const pairedChildId = dashboard?.device?.paired ? resolvedChildId : null;
   const selectedSession =
     dashboard?.sessions?.find((s) => s.id === selectedSessionId) || null;
-  const flaggedTurnIds = (dashboard?.flaggedTurns || []).map((f) => f.turn_id);
+  const flaggedTurnIds = (dashboard?.flaggedTurns || [])
+    .filter((f) => f.session_id === selectedSessionId)
+    .map((f) => f.turn_id);
 
   const renderActiveView = () => {
     if (activeTab === 'transcript') {
@@ -234,6 +240,10 @@ export function HomeShell({ initialTab }: HomeShellProps) {
           <SessionsView
             dashboard={dashboard}
             onOpenSession={handleOpenSession}
+            modeFilter={sessionModeFilter}
+            onModeFilterChange={setSessionModeFilter}
+            subjectFilter={sessionSubjectFilter}
+            onSubjectFilterChange={setSessionSubjectFilter}
           />
         );
       case 'progress':

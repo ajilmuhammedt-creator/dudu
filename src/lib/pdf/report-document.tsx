@@ -108,8 +108,8 @@ export const ReportDocument: React.FC<ReportDocumentProps> = ({
   studyTime = '0m',
   sessionsCount = 0,
   examsTaken = 0,
-  avgScore = '—',
-  activePctText = '—',
+  avgScore = '-',
+  activePctText = '-',
   distractions = 0,
   sleepyChecks = 0,
   insight = 'No sessions recorded this week.'
@@ -117,10 +117,10 @@ export const ReportDocument: React.FC<ReportDocumentProps> = ({
   <Document>
     <Page size="A4" style={styles.page}>
       <View style={styles.header}>
-        <Text style={styles.title}>EduBuddy Parent — Weekly Progress Report</Text>
+        <Text style={styles.title}>EduBuddy Parent - Weekly Progress Report</Text>
         <Text style={styles.subtitle}>Generated on {new Date().toLocaleDateString('en-IN')}</Text>
         <Text style={styles.childInfo}>
-          Student: {childName} · CBSE Class {cbseClass} · {subjectsText}
+          Student: {childName} | CBSE Class {cbseClass} | {subjectsText}
         </Text>
       </View>
 
@@ -165,7 +165,7 @@ export const ReportDocument: React.FC<ReportDocumentProps> = ({
       </View>
 
       <Text style={styles.footer}>
-        EduBuddy Parent · Private &amp; Secure (India DPDP Act Compliant)
+        EduBuddy Parent | Private &amp; Secure (India DPDP Act Compliant)
       </Text>
     </Page>
   </Document>
