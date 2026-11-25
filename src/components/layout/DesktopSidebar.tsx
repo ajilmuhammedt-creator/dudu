@@ -16,13 +16,36 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 
+interface ChildSummary {
+  id: string;
+  name: string;
+  cbse_class: number;
+  avatar: string;
+}
+
 interface DesktopSidebarProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
   reviewCount?: number;
+  childrenList?: ChildSummary[];
+  selectedChildId?: string;
+  onSelectChild?: (childId: string) => void;
+  onOpenAddChild?: () => void;
+  pairedChildId?: string | null;
+  isOnline?: boolean;
 }
 
-export function DesktopSidebar({ activeTab, onTabChange, reviewCount = 1 }: DesktopSidebarProps) {
+export function DesktopSidebar({
+  activeTab,
+  onTabChange,
+  reviewCount = 0,
+  childrenList = [],
+  selectedChildId,
+  onSelectChild,
+  onOpenAddChild,
+  pairedChildId,
+  isOnline = false
+}: DesktopSidebarProps) {
   const menuItems = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'progress', label: 'Progress', icon: TrendingUp },
@@ -31,6 +54,11 @@ export function DesktopSidebar({ activeTab, onTabChange, reviewCount = 1 }: Desk
     { id: 'controls', label: 'Controls', icon: SlidersHorizontal },
     { id: 'devices', label: 'Devices', icon: Cpu }
   ];
+
+  const displayChildren: ChildSummary[] =
+    childrenList.length > 0
+      ? childrenList
+      : [{ id: '22222222-2222-2222-2222-222222222222', name: 'Arjun', cbse_class: 3, avatar: '👦' }];
 
   return (
     <aside className="hidden md:flex flex-col w-64 border-r border-[var(--border-card)] bg-[var(--bg-card)] min-h-screen p-5 shrink-0 transition-colors">
@@ -98,22 +126,47 @@ export function DesktopSidebar({ activeTab, onTabChange, reviewCount = 1 }: Desk
           <Users className="w-3.5 h-3.5" />
         </div>
 
-        <div className="space-y-1">
-          <div className="flex items-center justify-between p-2 rounded-xl bg-[var(--input-bg)] border border-[var(--border-card)]">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-[var(--brand-orange)]/15 text-[var(--brand-orange)] font-bold text-xs flex items-center justify-center">
-                A
-              </div>
-              <div>
-                <span className="text-xs font-semibold text-[var(--text-primary)] block">Arjun</span>
-                <span className="text-[10px] text-[var(--text-muted)] block">CBSE Class 3</span>
-              </div>
-            </div>
-            <span className="w-2 h-2 rounded-full bg-[#17A34A] animate-pulse" title="Robot online" />
-          </div>
+        <div className="space-y-1.5">
+          {displayChildren.map((child) => {
+            const isSelected = child.id === selectedChildId;
+            const hasRobot = pairedChildId === child.id;
+            return (
+              <button
+                key={child.id}
+                onClick={() => onSelectChild?.(child.id)}
+                className={`w-full flex items-center justify-between p-2 rounded-xl border text-left transition-all ${
+                  isSelected
+                    ? 'bg-[var(--brand-orange)]/10 border-[var(--brand-orange)]/40'
+                    : 'bg-[var(--input-bg)] border-[var(--border-card)] hover:border-[var(--brand-orange)]/30'
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-7 h-7 rounded-full bg-[var(--brand-orange)]/15 text-[var(--brand-orange)] font-bold text-sm flex items-center justify-center shrink-0">
+                    {child.avatar || child.name[0]}
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-xs font-semibold text-[var(--text-primary)] block truncate">
+                      {child.name}
+                    </span>
+                    <span className="text-[10px] text-[var(--text-muted)] block">
+                      CBSE Class {child.cbse_class}
+                    </span>
+                  </div>
+                </div>
+                {hasRobot && (
+                  <span
+                    className={`w-2 h-2 rounded-full shrink-0 ${
+                      isOnline ? 'bg-[#17A34A] animate-pulse' : 'bg-[#6B7280]'
+                    }`}
+                    title={isOnline ? 'Robot online' : 'Robot offline'}
+                  />
+                )}
+              </button>
+            );
+          })}
 
           <button
-            onClick={() => onTabChange('onboarding')}
+            onClick={() => onOpenAddChild?.()}
             className="w-full flex items-center justify-center gap-1.5 p-2 rounded-xl text-xs font-medium text-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/10 transition-colors"
           >
             <Plus className="w-3.5 h-3.5" /> Add child

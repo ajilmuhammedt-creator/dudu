@@ -72,6 +72,12 @@ export interface DashboardData {
     cbse_class: number;
     avatar: string;
   };
+  children: Array<{
+    id: string;
+    name: string;
+    cbse_class: number;
+    avatar: string;
+  }>;
   settings: {
     child_id: string;
     subjects: string[];

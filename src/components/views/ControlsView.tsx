@@ -19,8 +19,21 @@ import {
 } from 'lucide-react';
 import { useTheme, ParentTheme, RobotTheme } from '@/context/ThemeContext';
 import Link from 'next/link';
+import { ALL_CBSE_SUBJECTS } from '@/lib/cbse-subjects';
 
-export function ControlsView() {
+interface ControlsViewProps {
+  childId?: string;
+  childName?: string;
+  cbseClass?: number;
+  onChildUpdated?: () => void;
+}
+
+export function ControlsView({
+  childId = '22222222-2222-2222-2222-222222222222',
+  childName = 'Arjun',
+  cbseClass = 3,
+  onChildUpdated
+}: ControlsViewProps) {
   const { parentTheme, setParentTheme, robotTheme, setRobotTheme } = useTheme();
 
   const [subjects, setSubjects] = useState<string[]>(['Mathematics', 'EVS']);
@@ -37,23 +50,24 @@ export function ControlsView() {
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  const allSubjects = [
-    'Mathematics',
-    'EVS',
-    'English',
-    'Hindi',
-    'Science',
-    'Social Science',
-    'Malayalam',
-    'Computer'
-  ];
+  // Change class / name inline editor
+  const [showClassEditor, setShowClassEditor] = useState(false);
+  const [editName, setEditName] = useState(childName);
+  const [editClass, setEditClass] = useState(cbseClass);
 
-  // Fetch current controls on mount
+  useEffect(() => {
+    setEditName(childName);
+    setEditClass(cbseClass);
+  }, [childName, cbseClass]);
+
+  const allSubjects = ALL_CBSE_SUBJECTS;
+
+  // Fetch current controls on mount or when childId changes
   useEffect(() => {
     let active = true;
     async function fetchControls() {
       try {
-        const res = await fetch('/api/controls?child_id=22222222-2222-2222-2222-222222222222');
+        const res = await fetch(`/api/controls?child_id=${encodeURIComponent(childId)}`);
         if (res.ok) {
           const data = await res.json();
           if (data.settings && active) {
@@ -79,7 +93,7 @@ export function ControlsView() {
     return () => {
       active = false;
     };
-  }, [setParentTheme, setRobotTheme]);
+  }, [childId, setParentTheme, setRobotTheme]);
 
   const handleToggleSubject = (sub: string) => {
     let next: string[];
@@ -97,7 +111,7 @@ export function ControlsView() {
     setIsSaving(true);
     try {
       const payload = {
-        child_id: '22222222-2222-2222-2222-222222222222',
+        child_id: childId,
         subjects,
         stay_on_syllabus: stayOnSyllabus,
         camera_exam: cameraExam,
@@ -170,11 +184,83 @@ export function ControlsView() {
       <div>
         <h1 className="text-2xl font-bold text-[var(--text-primary)]">What EduBuddy may do</h1>
         <div className="flex items-center justify-between mt-1 text-sm text-[var(--text-muted)]">
-          <span>Arjun · CBSE Class 3</span>
-          <button className="text-[var(--brand-orange)] font-medium hover:underline text-xs">
-            Change class
+          <span>{childName} · CBSE Class {cbseClass}</span>
+          <button
+            onClick={() => setShowClassEditor(!showClassEditor)}
+            className="text-[var(--brand-orange)] font-medium hover:underline text-xs"
+          >
+            {showClassEditor ? 'Close' : 'Change class'}
           </button>
         </div>
+
+        {showClassEditor && (
+          <div className="card p-4 mt-3 space-y-3 border-[var(--brand-orange)]/40">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-[11px] text-[var(--text-muted)] block mb-1">Student name</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full bg-[var(--input-bg)] border border-[var(--border-card)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] font-semibold"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] text-[var(--text-muted)] block mb-1">CBSE Class (1–12)</label>
+                <select
+                  value={editClass}
+                  onChange={(e) => setEditClass(Number(e.target.value))}
+                  className="w-full bg-[var(--input-bg)] border border-[var(--border-card)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] font-semibold"
+                >
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((cls) => (
+                    <option key={cls} value={cls}>
+                      Class {cls}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowClassEditor(false)}
+                className="btn btn-secondary text-xs px-3 py-1.5 min-h-[36px]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setIsSaving(true);
+                  try {
+                    const res = await fetch('/api/children', {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        child_id: childId,
+                        name: editName.trim() || childName,
+                        cbse_class: editClass
+                      })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.message || 'Failed to update class');
+                    if (data.settings?.subjects) setSubjects(data.settings.subjects);
+                    setShowClassEditor(false);
+                    setToast({ type: 'success', message: 'Class updated & synced to robot ✓' });
+                    setTimeout(() => setToast(null), 3000);
+                    onChildUpdated?.();
+                  } catch (err: any) {
+                    setToast({ type: 'error', message: err.message || 'Failed to update class' });
+                  } finally {
+                    setIsSaving(false);
+                  }
+                }}
+                disabled={isSaving}
+                className="btn btn-primary text-xs px-4 py-1.5 min-h-[36px]"
+              >
+                Save class
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* THEMES & APPEARANCE CARD */}

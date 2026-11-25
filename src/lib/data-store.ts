@@ -4,6 +4,7 @@
 import { supabaseAdmin } from './supabase/admin';
 import { getKolkataMidnightToday } from './date-utils';
 import { sha256 } from './crypto';
+import { getSubjectsForClass } from './cbse-subjects';
 
 export interface DeviceRecord {
   id: string;
@@ -222,6 +223,11 @@ let stateInitialized = false;
 let lastSyncTime = 0;
 
 function applyStatePayload(data: any): void {
+  if (Array.isArray(data.children)) {
+    for (const c of data.children) {
+      memoryStore.children.set(c.id, c);
+    }
+  }
   if (Array.isArray(data.devices)) {
     for (const d of data.devices) {
       memoryStore.devices.set(d.id, d);
@@ -271,36 +277,50 @@ async function ensureStateLoaded(): Promise<void> {
     return;
   }
 
-  // 1. Try local file cache (instant)
-  try {
-    const fs = await import('fs');
-    if (fs.existsSync(LOCAL_STATE_FILE)) {
-      const content = fs.readFileSync(LOCAL_STATE_FILE, 'utf-8');
-      const data = JSON.parse(content);
-      applyStatePayload(data);
-      stateInitialized = true;
-      lastSyncTime = now;
-      return;
-    }
-  } catch {}
+  const loadLocal = async () => {
+    try {
+      const fs = await import('fs');
+      if (fs.existsSync(LOCAL_STATE_FILE)) {
+        const content = fs.readFileSync(LOCAL_STATE_FILE, 'utf-8');
+        const data = JSON.parse(content);
+        applyStatePayload(data);
+        stateInitialized = true;
+        lastSyncTime = now;
+        return true;
+      }
+    } catch {}
+    return false;
+  };
 
-  // 2. Try Supabase storage bucket
-  try {
-    const { data, error } = await supabaseAdmin.storage.from(STATE_BUCKET).download(STATE_OBJECT);
-    if (!error && data) {
-      const text = await data.text();
-      const parsed = JSON.parse(text);
-      applyStatePayload(parsed);
-      stateInitialized = true;
-      lastSyncTime = now;
+  const loadSupabaseStorage = async () => {
+    try {
+      const { data, error } = await supabaseAdmin.storage.from(STATE_BUCKET).download(STATE_OBJECT);
+      if (!error && data) {
+        const text = await data.text();
+        const parsed = JSON.parse(text);
+        applyStatePayload(parsed);
+        stateInitialized = true;
+        lastSyncTime = now;
 
-      try {
-        const fs = await import('fs');
-        fs.writeFileSync(LOCAL_STATE_FILE, text, 'utf-8');
-      } catch {}
-      return;
-    }
-  } catch {}
+        try {
+          const fs = await import('fs');
+          fs.writeFileSync(LOCAL_STATE_FILE, text, 'utf-8');
+        } catch {}
+        return true;
+      }
+    } catch {}
+    return false;
+  };
+
+  // On Vercel serverless, always prefer Supabase Storage so cross-container updates
+  // (device sync last_seen, new children, class changes) are never shadowed by stale /tmp.
+  if (process.env.VERCEL) {
+    if (await loadSupabaseStorage()) return;
+    if (await loadLocal()) return;
+  } else {
+    if (await loadLocal()) return;
+    if (await loadSupabaseStorage()) return;
+  }
 
   stateInitialized = true;
   lastSyncTime = now;
@@ -313,6 +333,7 @@ async function persistState(): Promise<void> {
   }
 
   const payload = {
+    children: Array.from(memoryStore.children.values()),
     devices: Array.from(memoryStore.devices.values()),
     childSettings: Array.from(memoryStore.childSettings.values()),
     familyMembers: Array.from(memoryStore.familyMembers.values()),
@@ -604,6 +625,170 @@ export const DataStore = {
     } catch {}
 
     return memoryStore.children.get(childId) || null;
+  },
+
+  async getChildrenByFamily(familyId: string): Promise<ChildRecord[]> {
+    await ensureStateLoaded();
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('children')
+        .select('*')
+        .eq('family_id', familyId)
+        .eq('archived', false)
+        .order('created_at', { ascending: true });
+      if (!error && data && data.length > 0) return data as ChildRecord[];
+    } catch {}
+
+    const list: ChildRecord[] = [];
+    for (const c of memoryStore.children.values()) {
+      if (c.family_id === familyId && !c.archived) list.push(c);
+    }
+    return list.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  },
+
+  async createChild(input: {
+    family_id: string;
+    name: string;
+    cbse_class: number;
+    avatar?: string;
+    subjects?: string[];
+  }): Promise<{ child: ChildRecord; settings: ChildSettingsRecord }> {
+    await ensureStateLoaded();
+    const childId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    const child: ChildRecord = {
+      id: childId,
+      family_id: input.family_id,
+      name: input.name.trim(),
+      cbse_class: input.cbse_class,
+      avatar: input.avatar || '👦',
+      archived: false,
+      created_at: now
+    };
+
+    const classSubjects = getSubjectsForClass(input.cbse_class);
+    const chosenSubjects =
+      input.subjects && input.subjects.length > 0 ? input.subjects : classSubjects;
+
+    const settings: ChildSettingsRecord = {
+      child_id: childId,
+      subjects: chosenSubjects,
+      stay_on_syllabus: true,
+      camera_exam: true,
+      break_prompts: true,
+      keep_photos: false,
+      daily_limit_min: 60,
+      window_start: '07:00',
+      window_end: '20:00',
+      language: 'en',
+      wake_sensitivity: 4,
+      parent_pin_hash: null,
+      theme: 'light',
+      robot_theme: 'day',
+      version: 1,
+      updated_at: now
+    };
+
+    memoryStore.children.set(childId, child);
+    memoryStore.childSettings.set(childId, settings);
+
+    try {
+      await supabaseAdmin.from('children').insert(child);
+      await supabaseAdmin.from('child_settings').insert(settings);
+    } catch {}
+
+    await persistState();
+    return { child, settings };
+  },
+
+  async updateChild(
+    childId: string,
+    updates: { name?: string; cbse_class?: number; avatar?: string }
+  ): Promise<{ child: ChildRecord; settings: ChildSettingsRecord }> {
+    await ensureStateLoaded();
+    const existing = memoryStore.children.get(childId);
+    if (!existing) throw new Error('Child not found');
+
+    const newClass = updates.cbse_class !== undefined ? updates.cbse_class : existing.cbse_class;
+    const updatedChild: ChildRecord = {
+      ...existing,
+      name: updates.name !== undefined ? updates.name.trim() : existing.name,
+      cbse_class: newClass,
+      avatar: updates.avatar !== undefined ? updates.avatar : existing.avatar
+    };
+
+    memoryStore.children.set(childId, updatedChild);
+    try {
+      await supabaseAdmin
+        .from('children')
+        .update({
+          name: updatedChild.name,
+          cbse_class: updatedChild.cbse_class,
+          avatar: updatedChild.avatar
+        })
+        .eq('id', childId);
+    } catch {}
+
+    // Reconcile subjects if class changed, and bump settings version so robot picks up child_name/child_class
+    const currentSettings = (await this.getChildSettings(childId)) || {
+      child_id: childId,
+      subjects: getSubjectsForClass(newClass),
+      stay_on_syllabus: true,
+      camera_exam: true,
+      break_prompts: true,
+      keep_photos: false,
+      daily_limit_min: 60,
+      window_start: '07:00',
+      window_end: '20:00',
+      language: 'en' as const,
+      wake_sensitivity: 4,
+      parent_pin_hash: null,
+      theme: 'light' as const,
+      robot_theme: 'day' as const,
+      version: 1,
+      updated_at: new Date().toISOString()
+    };
+
+    let nextSubjects = currentSettings.subjects;
+    if (updates.cbse_class !== undefined && updates.cbse_class !== existing.cbse_class) {
+      const validForNewClass = getSubjectsForClass(newClass);
+      const kept = currentSettings.subjects.filter((s) => validForNewClass.includes(s));
+      nextSubjects = kept.length > 0 ? kept : validForNewClass;
+    }
+
+    const updatedSettings = await this.updateChildSettings(childId, {
+      subjects: nextSubjects
+    });
+
+    await persistState();
+    return { child: updatedChild, settings: updatedSettings };
+  },
+
+  async assignDeviceChild(deviceId: string, childId: string): Promise<DeviceRecord> {
+    await ensureStateLoaded();
+    const d = memoryStore.devices.get(deviceId) || (await this.getDeviceByUid('DUDU-90932C9FC114'));
+    if (!d) throw new Error('Device not found');
+
+    const child = await this.getChildById(childId);
+    if (!child) throw new Error('Child not found');
+
+    const updated: DeviceRecord = {
+      ...d,
+      family_id: child.family_id,
+      child_id: child.id
+    };
+
+    memoryStore.devices.set(d.id, updated);
+    try {
+      await supabaseAdmin
+        .from('devices')
+        .update({ family_id: child.family_id, child_id: child.id })
+        .eq('id', d.id);
+    } catch {}
+
+    await persistState();
+    return updated;
   },
 
   async getChildSettings(childId: string): Promise<ChildSettingsRecord | null> {

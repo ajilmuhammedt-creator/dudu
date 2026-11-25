@@ -5,7 +5,19 @@ import React, { useState, useEffect } from 'react';
 import { Cpu, Wifi, MessageSquare, Unlink, Check, Volume2, Edit2, Plus, Loader2 } from 'lucide-react';
 import { PairRobotModal } from '../modals/PairRobotModal';
 
-export function DevicesView() {
+interface ChildOption {
+  id: string;
+  name: string;
+  cbse_class: number;
+  avatar: string;
+}
+
+interface DevicesViewProps {
+  childrenList?: ChildOption[];
+  onRefresh?: () => void;
+}
+
+export function DevicesView({ childrenList = [], onRefresh }: DevicesViewProps) {
   const [sayText, setSayText] = useState('');
   const [showSayModal, setShowSayModal] = useState(false);
   const [showUnpairModal, setShowUnpairModal] = useState(false);
@@ -16,6 +28,8 @@ export function DevicesView() {
   const [isUnpaired, setIsUnpaired] = useState(false);
   const [deviceData, setDeviceData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [children, setChildren] = useState<ChildOption[]>(childrenList);
+  const [assigning, setAssigning] = useState(false);
 
   const fetchDevice = async () => {
     try {
@@ -33,7 +47,39 @@ export function DevicesView() {
 
   useEffect(() => {
     fetchDevice();
-  }, []);
+    if (childrenList.length > 0) {
+      setChildren(childrenList);
+    } else {
+      fetch('/api/children')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (d?.children) setChildren(d.children);
+        })
+        .catch(() => {});
+    }
+  }, [childrenList]);
+
+  const handleAssignChild = async (newChildId: string) => {
+    if (!deviceData?.id) return;
+    setAssigning(true);
+    try {
+      const res = await fetch('/api/devices/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          device_id: deviceData.id,
+          child_id: newChildId
+        })
+      });
+      if (res.ok) {
+        await fetchDevice();
+        onRefresh?.();
+      }
+    } catch {}
+    finally {
+      setAssigning(false);
+    }
+  };
 
   const handleSaySubmit = async () => {
     if (!sayText.trim() || sayText.length > 120) return;
@@ -145,10 +191,42 @@ export function DevicesView() {
               </div>
             </div>
 
-            <div className="flex items-center gap-1.5 text-xs text-[#17A34A] font-semibold bg-[#17A34A]/10 px-2.5 py-1 rounded-full">
-              <span className="w-2 h-2 rounded-full bg-[#17A34A] animate-pulse" />
-              Online
+            <div
+              className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${
+                deviceData?.online
+                  ? 'text-[var(--success-green)] bg-[var(--success-green)]/10'
+                  : 'text-[var(--text-muted)] bg-[var(--badge-bg)]'
+              }`}
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  deviceData?.online ? 'bg-[var(--success-green)] animate-pulse' : 'bg-[var(--text-muted)]'
+                }`}
+              />
+              {deviceData?.online ? 'Online' : 'Offline'}
             </div>
+          </div>
+
+          {/* This robot is used by selector */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-[var(--input-bg)] border border-[var(--border-card)]">
+            <span className="text-xs font-semibold text-[var(--text-primary)]">
+              This robot is used by:
+            </span>
+            <select
+              disabled={assigning}
+              value={deviceData?.child_id || ''}
+              onChange={(e) => handleAssignChild(e.target.value)}
+              className="bg-[var(--bg-card)] border border-[var(--border-card)] rounded-lg px-3 py-1.5 text-xs font-semibold text-[var(--text-primary)] focus:outline-none focus:border-[var(--brand-orange)]"
+            >
+              {(children.length > 0
+                ? children
+                : [{ id: '22222222-2222-2222-2222-222222222222', name: 'Arjun', cbse_class: 3, avatar: '👦' }]
+              ).map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.avatar || '👦'} {c.name} (Class {c.cbse_class})
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Telemetry info */}
@@ -269,6 +347,7 @@ export function DevicesView() {
       {/* Pair Robot Modal */}
       <PairRobotModal
         isOpen={showPairModal}
+        childrenList={children}
         onClose={() => setShowPairModal(false)}
         onSuccess={async () => {
           setIsUnpaired(false);

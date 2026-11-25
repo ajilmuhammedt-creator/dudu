@@ -13,12 +13,16 @@ export async function GET() {
 
   const isPaired = Boolean(device.family_id && device.child_id);
   const child = isPaired && device.child_id ? await DataStore.getChildById(device.child_id) : null;
+  const online = device.last_seen
+    ? (Date.now() - new Date(device.last_seen).getTime()) / 1000 <= 180
+    : false;
 
   return NextResponse.json({
     id: device.id,
     device_uid: device.device_uid,
     name: device.name,
     paired: isPaired,
+    online,
     family_id: device.family_id,
     child_id: device.child_id,
     child_name: child?.name || (isPaired ? 'Arjun' : null),

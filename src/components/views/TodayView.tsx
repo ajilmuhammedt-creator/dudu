@@ -50,6 +50,14 @@ function formatEventLabel(ev: DashboardEvent): string {
       return '🚪 No answer to the sleepy check';
     case 'too_dark':
       return '💡 Room too dark to read';
+    case 'subject_switch':
+      return `📚 Switched subject by voice${ev.data?.subject ? ` (${ev.data.subject})` : ''}`;
+    case 'lang_hi':
+      return '🌐 Switched language to Hindi by voice';
+    case 'lang_ml':
+      return '🌐 Switched language to Malayalam by voice';
+    case 'lang_en':
+      return '🌐 Switched language to English by voice';
     case 'off_topic':
       return '↪ Off-topic question';
     case 'break_prompt':
@@ -338,6 +346,7 @@ export function TodayView({ dashboard, onNavigateTab, onOpenSession }: TodayView
 
       <PairRobotModal
         isOpen={showPairModal}
+        childrenList={dashboard?.children || []}
         onClose={() => setShowPairModal(false)}
         onSuccess={() => {
           setShowPairModal(false);

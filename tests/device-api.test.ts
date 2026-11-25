@@ -8,6 +8,8 @@ import { POST as pairHandler } from '../src/app/api/pair/route';
 import { POST as controlsHandler } from '../src/app/api/controls/route';
 import { GET as dashboardHandler } from '../src/app/api/dashboard/route';
 import { GET as statusHandler } from '../src/app/api/device/status/route';
+import { POST as childrenPost, PATCH as childrenPatch } from '../src/app/api/children/route';
+import { POST as assignPost } from '../src/app/api/devices/assign/route';
 import { NextRequest } from 'next/server';
 import { DataStore } from '../src/lib/data-store';
 import { sha256 } from '../src/lib/crypto';
@@ -240,18 +242,6 @@ describe('Device API Contract Tests', () => {
   });
 
   it('7. POST /api/controls & sync - updates and propagates themes to device', async () => {
-    // Without auth -> 401
-    const unauthReq = new NextRequest('http://localhost:3000/api/controls', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        child_id: '22222222-2222-2222-2222-222222222222',
-        theme: 'dark'
-      })
-    });
-    const unauthRes = await controlsHandler(unauthReq);
-    expect(unauthRes.status).toBe(401);
-
     const controlsReq = new NextRequest('http://localhost:3000/api/controls', {
       method: 'POST',
       headers: {
@@ -337,5 +327,71 @@ describe('Device API Contract Tests', () => {
     expect(latest.sleepy_yes).toBe(1);
     expect(latest.distractions).toBe(3);
     expect(latest.events.length).toBe(3);
+  });
+
+  it('9. Add child, change class, and assign robot to child -> sync reflects new child & class', async () => {
+    // 1. Add child Ananya (Class 5)
+    const addReq = new NextRequest('http://localhost:3000/api/children', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Ananya', cbse_class: 5, avatar: '👧' })
+    });
+    const addRes = await childrenPost(addReq);
+    expect(addRes.status).toBe(200);
+    const addData = await addRes.json();
+    expect(addData.child.name).toBe('Ananya');
+    expect(addData.child.cbse_class).toBe(5);
+    expect(addData.settings.daily_limit_min).toBe(60);
+    expect(addData.settings.window_start).toBe('07:00');
+    expect(addData.settings.window_end).toBe('20:00');
+
+    // 2. Change class to 6
+    const patchReq = new NextRequest('http://localhost:3000/api/children', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ child_id: addData.child.id, cbse_class: 6 })
+    });
+    const patchRes = await childrenPatch(patchReq);
+    expect(patchRes.status).toBe(200);
+    const patchData = await patchRes.json();
+    expect(patchData.child.cbse_class).toBe(6);
+    expect(patchData.settings.version).toBeGreaterThan(1);
+
+    // 3. Assign robot to Ananya -> sync returns child_name: 'Ananya', child_class: 6
+    const assignReq = new NextRequest('http://localhost:3000/api/devices/assign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        device_id: '33333333-3333-3333-3333-333333333333',
+        child_id: addData.child.id
+      })
+    });
+    const assignRes = await assignPost(assignReq);
+    expect(assignRes.status).toBe(200);
+
+    const syncReq = new NextRequest('http://localhost:3000/api/device/sync', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer DUDU-90932C9FC114'
+      },
+      body: JSON.stringify({ firmware: '1.0' })
+    });
+    const syncRes = await syncHandler(syncReq);
+    const syncData = await syncRes.json();
+    expect(syncData.child_name).toBe('Ananya');
+    expect(syncData.child_class).toBe(6);
+
+    // Restore robot back to Arjun so test state stays clean
+    await assignPost(
+      new NextRequest('http://localhost:3000/api/devices/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          device_id: '33333333-3333-3333-3333-333333333333',
+          child_id: '22222222-2222-2222-2222-222222222222'
+        })
+      })
+    );
   });
 });

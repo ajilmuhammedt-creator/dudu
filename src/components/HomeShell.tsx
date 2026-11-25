@@ -14,6 +14,7 @@ import { DevicesView } from '@/components/views/DevicesView';
 import { OnboardingView } from '@/components/views/OnboardingView';
 import { DesktopDashboardView } from '@/components/views/DesktopDashboardView';
 import { SignInView } from '@/components/views/SignInView';
+import { AddChildModal } from '@/components/modals/AddChildModal';
 import { DashboardData } from '@/lib/dashboard-types';
 import { Loader2 } from 'lucide-react';
 
@@ -33,54 +34,70 @@ const VALID_TABS = new Set([
   'transcript'
 ]);
 
+const REQUIRE_LOGIN = process.env.NEXT_PUBLIC_REQUIRE_LOGIN === 'true';
+const DEFAULT_CHILD_ID = '22222222-2222-2222-2222-222222222222';
+
 export function HomeShell({ initialTab }: HomeShellProps) {
   const [activeTab, setActiveTabState] = useState<string>(initialTab || 'today');
+  const [selectedChildId, setSelectedChildId] = useState<string>(DEFAULT_CHILD_ID);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authChecked, setAuthChecked] = useState(!REQUIRE_LOGIN);
+  const [isAuthenticated, setIsAuthenticated] = useState(!REQUIRE_LOGIN);
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [showAddChildModal, setShowAddChildModal] = useState(false);
 
-  // Sync ?tab= query param on mount if no initialTab was passed
+  // Restore ?tab= and saved selectedChildId on mount
   useEffect(() => {
-    if (!initialTab && typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const qTab = params.get('tab');
-      if (qTab && VALID_TABS.has(qTab)) {
-        setActiveTabState(qTab);
+    if (typeof window !== 'undefined') {
+      if (!initialTab) {
+        const params = new URLSearchParams(window.location.search);
+        const qTab = params.get('tab');
+        if (qTab && VALID_TABS.has(qTab)) {
+          setActiveTabState(qTab);
+        }
+      }
+      const savedChild = localStorage.getItem('dudu_selected_child_id');
+      if (savedChild) {
+        setSelectedChildId(savedChild);
       }
     }
   }, [initialTab]);
 
-  const fetchDashboard = useCallback(async () => {
-    try {
-      const res = await fetch('/api/dashboard?child_id=22222222-2222-2222-2222-222222222222', {
-        cache: 'no-store'
-      });
-      if (res.status === 401) {
-        setIsAuthenticated(false);
+  const fetchDashboard = useCallback(
+    async (overrideChildId?: string) => {
+      const targetChild = overrideChildId || selectedChildId;
+      try {
+        const res = await fetch(
+          `/api/dashboard?child_id=${encodeURIComponent(targetChild)}`,
+          { cache: 'no-store' }
+        );
+        if (res.status === 401 && REQUIRE_LOGIN) {
+          setIsAuthenticated(false);
+          setAuthChecked(true);
+          return;
+        }
+        if (res.ok) {
+          const data: DashboardData = await res.json();
+          setDashboard(data);
+          setIsAuthenticated(true);
+        }
+      } catch {
+        // Network error
+      } finally {
         setAuthChecked(true);
-        return;
       }
-      if (res.ok) {
-        const data: DashboardData = await res.json();
-        setDashboard(data);
-        setIsAuthenticated(true);
-      }
-    } catch {
-      // Network error
-    } finally {
-      setAuthChecked(true);
-    }
-  }, []);
+    },
+    [selectedChildId]
+  );
 
   useEffect(() => {
     fetchDashboard();
   }, [fetchDashboard]);
 
-  // Poll dashboard every 30s while authenticated so live robot syncs/sessions appear automatically
+  // Poll dashboard every 30s while active so live robot syncs/sessions appear automatically
   useEffect(() => {
     if (!isAuthenticated) return;
-    const interval = setInterval(fetchDashboard, 30000);
+    const interval = setInterval(() => fetchDashboard(), 30000);
     return () => clearInterval(interval);
   }, [isAuthenticated, fetchDashboard]);
 
@@ -93,6 +110,15 @@ export function HomeShell({ initialTab }: HomeShellProps) {
         window.history.pushState(null, '', targetPath);
       }
     }
+  };
+
+  const handleSelectChild = (childId: string) => {
+    setSelectedChildId(childId);
+    setSelectedSessionId(null);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('dudu_selected_child_id', childId);
+    }
+    fetchDashboard(childId);
   };
 
   const handleOpenSession = (sessionId: string) => {
@@ -113,7 +139,7 @@ export function HomeShell({ initialTab }: HomeShellProps) {
     setDashboard(null);
   };
 
-  if (!authChecked) {
+  if (REQUIRE_LOGIN && !authChecked) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[var(--bg-page)] text-[var(--text-primary)] gap-3">
         <Loader2 className="w-7 h-7 animate-spin text-[var(--brand-orange)]" />
@@ -122,7 +148,7 @@ export function HomeShell({ initialTab }: HomeShellProps) {
     );
   }
 
-  if (!isAuthenticated) {
+  if (REQUIRE_LOGIN && !isAuthenticated) {
     return (
       <SignInView
         onSignInSuccess={() => {
@@ -136,7 +162,9 @@ export function HomeShell({ initialTab }: HomeShellProps) {
   const reviewCount = dashboard?.needsReviewGrades?.length ?? 0;
   const childName = dashboard?.child?.name || 'Arjun';
   const cbseClass = dashboard?.child?.cbse_class || 3;
+  const childrenList = dashboard?.children || [];
   const isOnline = dashboard?.device?.online ?? false;
+  const pairedChildId = dashboard?.device?.paired ? (dashboard.device as any).child_id ?? null : null;
   const selectedSession =
     dashboard?.sessions?.find((s) => s.id === selectedSessionId) || null;
 
@@ -147,7 +175,7 @@ export function HomeShell({ initialTab }: HomeShellProps) {
           session={selectedSession}
           childName={childName}
           onBack={() => navigateTab('today')}
-          onRefresh={fetchDashboard}
+          onRefresh={() => fetchDashboard()}
         />
       );
     }
@@ -159,7 +187,7 @@ export function HomeShell({ initialTab }: HomeShellProps) {
             dashboard={dashboard}
             onNavigateTab={navigateTab}
             onOpenSession={handleOpenSession}
-            onRefresh={fetchDashboard}
+            onRefresh={() => fetchDashboard()}
           />
         );
       case 'overview':
@@ -170,7 +198,7 @@ export function HomeShell({ initialTab }: HomeShellProps) {
             onNavigateTab={navigateTab}
             onOpenSession={handleOpenSession}
             onDownloadPdf={handleDownloadPdf}
-            onRefresh={fetchDashboard}
+            onRefresh={() => fetchDashboard()}
           />
         );
       case 'progress':
@@ -180,22 +208,40 @@ export function HomeShell({ initialTab }: HomeShellProps) {
           <ReviewView
             grades={dashboard?.needsReviewGrades || []}
             childName={childName}
-            onSuccessReview={fetchDashboard}
+            onSuccessReview={() => fetchDashboard()}
           />
         );
       case 'controls':
-        return <ControlsView />;
+        return (
+          <ControlsView
+            childId={selectedChildId}
+            childName={childName}
+            cbseClass={cbseClass}
+            onChildUpdated={() => fetchDashboard()}
+          />
+        );
       case 'devices':
-        return <DevicesView />;
+        return (
+          <DevicesView
+            childrenList={childrenList}
+            onRefresh={() => fetchDashboard()}
+          />
+        );
       case 'onboarding':
-        return <OnboardingView onComplete={() => navigateTab('today')} />;
+        return (
+          <OnboardingView
+            childrenList={childrenList}
+            onOpenAddChild={() => setShowAddChildModal(true)}
+            onComplete={() => navigateTab('today')}
+          />
+        );
       default:
         return (
           <TodayView
             dashboard={dashboard}
             onNavigateTab={navigateTab}
             onOpenSession={handleOpenSession}
-            onRefresh={fetchDashboard}
+            onRefresh={() => fetchDashboard()}
           />
         );
     }
@@ -208,6 +254,12 @@ export function HomeShell({ initialTab }: HomeShellProps) {
         activeTab={activeTab === 'today' ? 'overview' : activeTab}
         onTabChange={navigateTab}
         reviewCount={reviewCount}
+        childrenList={childrenList}
+        selectedChildId={selectedChildId}
+        onSelectChild={handleSelectChild}
+        onOpenAddChild={() => setShowAddChildModal(true)}
+        pairedChildId={pairedChildId}
+        isOnline={isOnline}
       />
 
       {/* Main Content Area */}
@@ -219,7 +271,7 @@ export function HomeShell({ initialTab }: HomeShellProps) {
           reviewCount={reviewCount}
           activeTab={activeTab}
           onTabChange={navigateTab}
-          onSignOut={handleSignOut}
+          onSignOut={REQUIRE_LOGIN ? handleSignOut : undefined}
         />
 
         <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8">
@@ -233,6 +285,15 @@ export function HomeShell({ initialTab }: HomeShellProps) {
           reviewCount={reviewCount}
         />
       </div>
+
+      {/* Add Student Modal */}
+      <AddChildModal
+        isOpen={showAddChildModal}
+        onClose={() => setShowAddChildModal(false)}
+        onSuccess={(newChild) => {
+          handleSelectChild(newChild.id);
+        }}
+      />
     </div>
   );
 }

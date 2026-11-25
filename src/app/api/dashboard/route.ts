@@ -42,8 +42,9 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const [child, settings, rawDevice, sessions, grades, events] = await Promise.all([
+  const [child, children, settings, rawDevice, sessions, grades, events] = await Promise.all([
     DataStore.getChildById(childId),
+    DataStore.getChildrenByFamily('11111111-1111-1111-1111-111111111111'),
     DataStore.getChildSettings(childId),
     DataStore.getDeviceByUid('DUDU-90932C9FC114'),
     DataStore.getSessions(childId),
@@ -252,6 +253,7 @@ export async function GET(req: NextRequest) {
       cbse_class: 3,
       avatar: '👦'
     },
+    children,
     settings,
     device,
     todayLabel,

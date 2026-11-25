@@ -1,20 +1,45 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Cpu, X, Check, Loader2, AlertCircle } from 'lucide-react';
+
+interface ChildOption {
+  id: string;
+  name: string;
+  cbse_class: number;
+  avatar: string;
+}
 
 interface PairRobotModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: (childName: string) => void;
+  childrenList?: ChildOption[];
 }
 
-export function PairRobotModal({ isOpen, onClose, onSuccess }: PairRobotModalProps) {
+export function PairRobotModal({ isOpen, onClose, onSuccess, childrenList = [] }: PairRobotModalProps) {
   const [code, setCode] = useState('');
-  const [childId, setChildId] = useState('22222222-2222-2222-2222-222222222222');
+  const [children, setChildren] = useState<ChildOption[]>(childrenList);
+  const [childId, setChildId] = useState(childrenList[0]?.id || '22222222-2222-2222-2222-222222222222');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    if (childrenList.length > 0) {
+      setChildren(childrenList);
+    } else if (isOpen) {
+      fetch('/api/children')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (d?.children?.length) {
+            setChildren(d.children);
+            setChildId(d.children[0].id);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isOpen, childrenList]);
 
   if (!isOpen) return null;
 
@@ -124,9 +149,16 @@ export function PairRobotModal({ isOpen, onClose, onSuccess }: PairRobotModalPro
               <select
                 value={childId}
                 onChange={(e) => setChildId(e.target.value)}
-                className="w-full bg-[#F6F3EE] border border-[#ECE7DE] rounded-xl p-2.5 text-xs text-[#1F2328] font-medium focus:outline-none focus:border-[#F26B1D]"
+                className="w-full bg-[var(--input-bg)] border border-[var(--border-card)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] font-medium focus:outline-none focus:border-[var(--brand-orange)]"
               >
-                <option value="22222222-2222-2222-2222-222222222222">👦 Arjun (Class 3)</option>
+                {(children.length > 0
+                  ? children
+                  : [{ id: '22222222-2222-2222-2222-222222222222', name: 'Arjun', cbse_class: 3, avatar: '👦' }]
+                ).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.avatar || '👦'} {c.name} (Class {c.cbse_class})
+                  </option>
+                ))}
               </select>
             </div>
 
