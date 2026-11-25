@@ -952,7 +952,7 @@ export const DataStore = {
         .eq('id', d.id);
     } catch {}
 
-    await persistDomains(['children'], true);
+    await persistDomains(['devices'], true);
     return updated;
   },
 
