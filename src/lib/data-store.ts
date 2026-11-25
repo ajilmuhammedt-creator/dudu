@@ -224,16 +224,19 @@ let lastSyncTime = 0;
 
 function applyStatePayload(data: any): void {
   if (Array.isArray(data.children)) {
+    memoryStore.children.clear();
     for (const c of data.children) {
       memoryStore.children.set(c.id, c);
     }
   }
   if (Array.isArray(data.devices)) {
+    memoryStore.devices.clear();
     for (const d of data.devices) {
       memoryStore.devices.set(d.id, d);
     }
   }
   if (Array.isArray(data.childSettings)) {
+    memoryStore.childSettings.clear();
     for (const cs of data.childSettings) {
       memoryStore.childSettings.set(cs.child_id, cs);
     }
@@ -515,7 +518,7 @@ export const DataStore = {
   },
 
   async pairDevice(deviceId: string, familyId: string, childId: string): Promise<DeviceRecord> {
-    await ensureStateLoaded();
+    await ensureStateLoaded(true);
     const d = memoryStore.devices.get(deviceId) || (await this.getDeviceByUid('DUDU-90932C9FC114'));
     if (!d) throw new Error('Device not found');
 
@@ -545,7 +548,7 @@ export const DataStore = {
   },
 
   async unpairDevice(deviceId: string): Promise<DeviceRecord> {
-    await ensureStateLoaded();
+    await ensureStateLoaded(true);
     const d = memoryStore.devices.get(deviceId) || (await this.getDeviceByUid('DUDU-90932C9FC114'));
     if (!d) throw new Error('Device not found');
 
@@ -585,7 +588,7 @@ export const DataStore = {
       pairing_code_expires?: string;
     }
   ): Promise<DeviceRecord> {
-    await ensureStateLoaded();
+    await ensureStateLoaded(true);
     const d = memoryStore.devices.get(deviceId) || (await this.getDeviceByUid('DUDU-90932C9FC114'));
     if (!d) throw new Error('Device not found');
 
@@ -785,7 +788,7 @@ export const DataStore = {
   },
 
   async assignDeviceChild(deviceId: string, childId: string): Promise<DeviceRecord> {
-    await ensureStateLoaded();
+    await ensureStateLoaded(true);
     const d = memoryStore.devices.get(deviceId) || (await this.getDeviceByUid('DUDU-90932C9FC114'));
     if (!d) throw new Error('Device not found');
 
@@ -806,7 +809,36 @@ export const DataStore = {
         .eq('id', d.id);
     } catch {}
 
-    await persistState();
+    await persistState(true);
+    return updated;
+  },
+
+  async archiveChild(childId: string): Promise<ChildRecord> {
+    await ensureStateLoaded(true);
+    const existing = memoryStore.children.get(childId);
+    if (!existing) throw new Error('Child not found');
+
+    // Prevent archiving if a robot is currently paired to this child
+    for (const d of memoryStore.devices.values()) {
+      if (d.family_id && d.child_id === childId) {
+        throw new Error('ROBOT_PAIRED_TO_CHILD');
+      }
+    }
+
+    const updated: ChildRecord = {
+      ...existing,
+      archived: true
+    };
+    memoryStore.children.set(childId, updated);
+
+    try {
+      await supabaseAdmin
+        .from('children')
+        .update({ archived: true })
+        .eq('id', childId);
+    } catch {}
+
+    await persistState(true);
     return updated;
   },
 

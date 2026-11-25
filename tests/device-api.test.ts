@@ -393,5 +393,28 @@ describe('Device API Contract Tests', () => {
         })
       })
     );
+
+    // 4. Archive Ananya (now that robot is back on Arjun) -> 200
+    const archiveRes = await childrenPatch(
+      new NextRequest('http://localhost:3000/api/children', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ child_id: addData.child.id, archived: true })
+      })
+    );
+    expect(archiveRes.status).toBe(200);
+
+    // 5. Archiving Arjun while robot is paired -> 409 Conflict
+    const conflictRes = await childrenPatch(
+      new NextRequest('http://localhost:3000/api/children', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          child_id: '22222222-2222-2222-2222-222222222222',
+          archived: true
+        })
+      })
+    );
+    expect(conflictRes.status).toBe(409);
   });
 });

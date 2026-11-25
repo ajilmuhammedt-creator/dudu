@@ -18,7 +18,8 @@ const updateChildSchema = z.object({
   child_id: guidSchema,
   name: z.string().trim().min(1).max(60).optional(),
   cbse_class: z.coerce.number().int().min(1).max(12).optional(),
-  avatar: z.string().max(8).optional()
+  avatar: z.string().max(8).optional(),
+  archived: z.boolean().optional()
 });
 
 export async function GET(req: NextRequest) {
@@ -66,6 +67,32 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ success: true, child, settings });
 }
 
+async function handleArchive(userId: string, childId: string) {
+  const owns = await DataStore.userOwnsChild(userId, childId);
+  if (!owns) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 403 });
+  }
+
+  try {
+    const child = await DataStore.archiveChild(childId);
+    return NextResponse.json({ success: true, child });
+  } catch (err: any) {
+    if (err.message === 'ROBOT_PAIRED_TO_CHILD') {
+      return NextResponse.json(
+        {
+          error: 'robot_paired',
+          message: 'A robot is paired to this student. Move the robot to another student on the Devices page first.'
+        },
+        { status: 409 }
+      );
+    }
+    return NextResponse.json(
+      { error: 'archive_failed', message: err.message || 'Failed to remove student' },
+      { status: err.message === 'Child not found' ? 404 : 500 }
+    );
+  }
+}
+
 export async function PATCH(req: NextRequest) {
   const userId = await resolveParentUser(req);
   if (!userId) {
@@ -90,6 +117,10 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
+  if (parsed.data.archived === true) {
+    return handleArchive(userId, parsed.data.child_id);
+  }
+
   const owns = await DataStore.userOwnsChild(userId, parsed.data.child_id);
   if (!owns) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 403 });
@@ -109,4 +140,27 @@ export async function PATCH(req: NextRequest) {
       { status: err.message === 'Child not found' ? 404 : 500 }
     );
   }
+}
+
+export async function DELETE(req: NextRequest) {
+  const userId = await resolveParentUser(req);
+  if (!userId) {
+    return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(req.url);
+  let childId = searchParams.get('child_id') || '';
+  if (!childId) {
+    try {
+      const body = await req.json();
+      childId = body.child_id || '';
+    } catch {}
+  }
+
+  const parsed = guidSchema.safeParse(childId);
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'invalid_child_id' }, { status: 400 });
+  }
+
+  return handleArchive(userId, parsed.data);
 }

@@ -194,7 +194,7 @@ export default function RobotScreenPage() {
 
             {/* Theme Toggle Button (Moon / Sun from Page 9) */}
             <button
-              onClick={toggleRobotDayNight}
+              onClick={() => toggleRobotDayNight()}
               className={`w-8 h-8 rounded-full flex items-center justify-center transition-transform active:scale-90 shadow-md ${
                 robotTheme === 'night'
                   ? 'bg-[#1E293B] text-amber-300 ring-2 ring-amber-300/40'

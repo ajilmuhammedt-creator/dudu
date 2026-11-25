@@ -1,12 +1,9 @@
 // src/components/views/ControlsView.tsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Sliders,
-  ShieldCheck,
   Check,
-  Bell,
   Lock,
   AlertTriangle,
   Palette,
@@ -15,74 +12,96 @@ import {
   Sparkles,
   Flame,
   Monitor,
-  ExternalLink
+  ExternalLink,
+  GraduationCap,
+  Trash2
 } from 'lucide-react';
 import { useTheme, ParentTheme, RobotTheme } from '@/context/ThemeContext';
 import Link from 'next/link';
 import { ALL_CBSE_SUBJECTS } from '@/lib/cbse-subjects';
+import { DashboardData } from '@/lib/dashboard-types';
 
 interface ControlsViewProps {
   childId?: string;
   childName?: string;
   cbseClass?: number;
-  onChildUpdated?: () => void;
+  initialSettings?: DashboardData['settings'];
+  canRemoveStudent?: boolean;
+  onOpenChangeClass?: () => void;
+  onChildUpdated?: () => Promise<void> | void;
+  onChildRemoved?: () => Promise<void> | void;
 }
 
 export function ControlsView({
   childId = '22222222-2222-2222-2222-222222222222',
   childName = 'Arjun',
   cbseClass = 3,
-  onChildUpdated
+  initialSettings,
+  canRemoveStudent = true,
+  onOpenChangeClass,
+  onChildUpdated,
+  onChildRemoved
 }: ControlsViewProps) {
-  const { parentTheme, setParentTheme, robotTheme, setRobotTheme } = useTheme();
+  const { parentTheme, applyParentTheme, robotTheme, applyRobotTheme } = useTheme();
 
-  const [subjects, setSubjects] = useState<string[]>(['Mathematics', 'EVS']);
-  const [stayOnSyllabus, setStayOnSyllabus] = useState(true);
-  const [cameraExam, setCameraExam] = useState(true);
-  const [breakPrompts, setBreakPrompts] = useState(true);
-  const [keepPhotos, setKeepPhotos] = useState(false);
-  const [dailyLimit, setDailyLimit] = useState(60);
-  const [windowStart, setWindowStart] = useState('16:30');
-  const [windowEnd, setWindowEnd] = useState('19:30');
-  const [language, setLanguage] = useState<'en' | 'hi' | 'ml'>('en');
-  const [sensitivity, setSensitivity] = useState(4);
+  const [subjects, setSubjects] = useState<string[]>(initialSettings?.subjects || []);
+  const [stayOnSyllabus, setStayOnSyllabus] = useState(initialSettings?.stay_on_syllabus ?? true);
+  const [cameraExam, setCameraExam] = useState(initialSettings?.camera_exam ?? true);
+  const [breakPrompts, setBreakPrompts] = useState(initialSettings?.break_prompts ?? true);
+  const [keepPhotos, setKeepPhotos] = useState(initialSettings?.keep_photos ?? false);
+  const [dailyLimit, setDailyLimit] = useState(initialSettings?.daily_limit_min ?? 60);
+  const [windowStart, setWindowStart] = useState(initialSettings?.window_start || '07:00');
+  const [windowEnd, setWindowEnd] = useState(initialSettings?.window_end || '20:00');
+  const [language, setLanguage] = useState<'en' | 'hi' | 'ml'>(initialSettings?.language || 'en');
+  const [sensitivity, setSensitivity] = useState(initialSettings?.wake_sensitivity ?? 4);
   const [pin, setPin] = useState('');
+  const [loadedChildId, setLoadedChildId] = useState<string | null>(
+    initialSettings?.child_id || null
+  );
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [showRemoveModal, setShowRemoveModal] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
-  // Change class / name inline editor
-  const [showClassEditor, setShowClassEditor] = useState(false);
-  const [editName, setEditName] = useState(childName);
-  const [editClass, setEditClass] = useState(cbseClass);
+  const applyLoadedSettings = useCallback(
+    (s: NonNullable<DashboardData['settings']>) => {
+      if (Array.isArray(s.subjects)) setSubjects(s.subjects);
+      if (s.stay_on_syllabus !== undefined) setStayOnSyllabus(s.stay_on_syllabus);
+      if (s.camera_exam !== undefined) setCameraExam(s.camera_exam);
+      if (s.break_prompts !== undefined) setBreakPrompts(s.break_prompts);
+      if (s.keep_photos !== undefined) setKeepPhotos(s.keep_photos);
+      if (s.daily_limit_min !== undefined) setDailyLimit(s.daily_limit_min);
+      if (s.window_start) setWindowStart(s.window_start);
+      if (s.window_end) setWindowEnd(s.window_end);
+      if (s.language) setLanguage(s.language);
+      if (s.wake_sensitivity !== undefined) setSensitivity(s.wake_sensitivity);
+      // Pure UI apply only — NEVER POST on load/switch
+      if (s.theme) applyParentTheme(s.theme);
+      if (s.robot_theme) applyRobotTheme(s.robot_theme);
+      setLoadedChildId(s.child_id);
+    },
+    [applyParentTheme, applyRobotTheme]
+  );
 
+  // Sync immediately whenever parent dashboard settings prop changes for the selected child
   useEffect(() => {
-    setEditName(childName);
-    setEditClass(cbseClass);
-  }, [childName, cbseClass]);
+    if (initialSettings && initialSettings.child_id === childId) {
+      applyLoadedSettings(initialSettings);
+    }
+  }, [childId, initialSettings, applyLoadedSettings]);
 
-  const allSubjects = ALL_CBSE_SUBJECTS;
-
-  // Fetch current controls on mount or when childId changes
+  // Also fetch fresh controls from server on mount or childId change
   useEffect(() => {
     let active = true;
     async function fetchControls() {
       try {
-        const res = await fetch(`/api/controls?child_id=${encodeURIComponent(childId)}`);
+        const res = await fetch(`/api/controls?child_id=${encodeURIComponent(childId)}`, {
+          cache: 'no-store'
+        });
         if (res.ok) {
           const data = await res.json();
           if (data.settings && active) {
-            if (data.settings.subjects) setSubjects(data.settings.subjects);
-            if (data.settings.stay_on_syllabus !== undefined) setStayOnSyllabus(data.settings.stay_on_syllabus);
-            if (data.settings.camera_exam !== undefined) setCameraExam(data.settings.camera_exam);
-            if (data.settings.break_prompts !== undefined) setBreakPrompts(data.settings.break_prompts);
-            if (data.settings.keep_photos !== undefined) setKeepPhotos(data.settings.keep_photos);
-            if (data.settings.daily_limit_min !== undefined) setDailyLimit(data.settings.daily_limit_min);
-            if (data.settings.window_start) setWindowStart(data.settings.window_start);
-            if (data.settings.window_end) setWindowEnd(data.settings.window_end);
-            if (data.settings.language) setLanguage(data.settings.language);
-            if (data.settings.wake_sensitivity !== undefined) setSensitivity(data.settings.wake_sensitivity);
-            if (data.settings.theme) setParentTheme(data.settings.theme);
-            if (data.settings.robot_theme) setRobotTheme(data.settings.robot_theme);
+            applyLoadedSettings(data.settings);
           }
         }
       } catch (err) {
@@ -93,25 +112,14 @@ export function ControlsView({
     return () => {
       active = false;
     };
-  }, [childId, setParentTheme, setRobotTheme]);
-
-  const handleToggleSubject = (sub: string) => {
-    let next: string[];
-    if (subjects.includes(sub)) {
-      if (subjects.length === 1) return; // keep at least one
-      next = subjects.filter((s) => s !== sub);
-    } else {
-      next = [...subjects, sub];
-    }
-    setSubjects(next);
-    triggerAutoSave({ subjects: next });
-  };
+  }, [childId, applyLoadedSettings]);
 
   const triggerAutoSave = async (override?: any) => {
+    const targetChildId = childId;
     setIsSaving(true);
     try {
       const payload = {
-        child_id: childId,
+        child_id: targetChildId,
         subjects,
         stay_on_syllabus: stayOnSyllabus,
         camera_exam: cameraExam,
@@ -141,6 +149,7 @@ export function ControlsView({
 
       setToast({ type: 'success', message: 'Settings saved & synced to robot ✓' });
       setTimeout(() => setToast((prev) => (prev?.type === 'success' ? null : prev)), 3000);
+      await onChildUpdated?.();
     } catch (err: any) {
       setToast({ type: 'error', message: err.message || 'Failed to save changes. Please try again.' });
       setTimeout(() => setToast((prev) => (prev?.type === 'error' ? null : prev)), 5000);
@@ -149,14 +158,53 @@ export function ControlsView({
     }
   };
 
+  const handleToggleSubject = (sub: string) => {
+    if (loadedChildId !== childId) return;
+    let next: string[];
+    if (subjects.includes(sub)) {
+      if (subjects.length === 1) return; // keep at least one
+      next = subjects.filter((s) => s !== sub);
+    } else {
+      next = [...subjects, sub];
+    }
+    setSubjects(next);
+    triggerAutoSave({ subjects: next });
+  };
+
   const handleParentThemeChange = (newTheme: ParentTheme) => {
-    setParentTheme(newTheme);
+    applyParentTheme(newTheme);
     triggerAutoSave({ theme: newTheme });
   };
 
   const handleRobotThemeChange = (newTheme: RobotTheme) => {
-    setRobotTheme(newTheme);
+    applyRobotTheme(newTheme);
     triggerAutoSave({ robot_theme: newTheme });
+  };
+
+  const handleRemoveStudent = async () => {
+    setRemoving(true);
+    try {
+      const res = await fetch('/api/children', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          child_id: childId,
+          archived: true
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || data.error || 'Could not remove student');
+      }
+      setShowRemoveModal(false);
+      await onChildRemoved?.();
+    } catch (err: any) {
+      setShowRemoveModal(false);
+      setToast({ type: 'error', message: err.message || 'Could not remove student' });
+      setTimeout(() => setToast(null), 5000);
+    } finally {
+      setRemoving(false);
+    }
   };
 
   return (
@@ -181,92 +229,20 @@ export function ControlsView({
       )}
 
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-[var(--text-primary)]">What EduBuddy may do</h1>
-        <div className="flex items-center justify-between mt-1 text-sm text-[var(--text-muted)]">
-          <span>{childName} · CBSE Class {cbseClass}</span>
-          <button
-            onClick={() => {
-              if (!showClassEditor) {
-                setEditName(childName);
-                setEditClass(cbseClass);
-              }
-              setShowClassEditor(!showClassEditor);
-            }}
-            className="text-[var(--brand-orange)] font-medium hover:underline text-xs"
-          >
-            {showClassEditor ? 'Close' : 'Change class'}
-          </button>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">What EduBuddy may do</h1>
+          <p className="text-sm text-[var(--text-muted)] mt-0.5">
+            {childName} · CBSE Class {cbseClass}
+          </p>
         </div>
-
-        {showClassEditor && (
-          <div className="card p-4 mt-3 space-y-3 border-[var(--brand-orange)]/40">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="text-[11px] text-[var(--text-muted)] block mb-1">Student name</label>
-                <input
-                  type="text"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  className="w-full bg-[var(--input-bg)] border border-[var(--border-card)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] font-semibold"
-                />
-              </div>
-              <div>
-                <label className="text-[11px] text-[var(--text-muted)] block mb-1">CBSE Class (1–12)</label>
-                <select
-                  value={editClass}
-                  onChange={(e) => setEditClass(Number(e.target.value))}
-                  className="w-full bg-[var(--input-bg)] border border-[var(--border-card)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] font-semibold"
-                >
-                  {Array.from({ length: 12 }, (_, i) => i + 1).map((cls) => (
-                    <option key={cls} value={cls}>
-                      Class {cls}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setShowClassEditor(false)}
-                className="btn btn-secondary text-xs px-3 py-1.5 min-h-[36px]"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={async () => {
-                  setIsSaving(true);
-                  try {
-                    const res = await fetch('/api/children', {
-                      method: 'PATCH',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        child_id: childId,
-                        name: editName.trim() || childName,
-                        cbse_class: editClass
-                      })
-                    });
-                    const data = await res.json();
-                    if (!res.ok) throw new Error(data.message || 'Failed to update class');
-                    if (data.settings?.subjects) setSubjects(data.settings.subjects);
-                    setShowClassEditor(false);
-                    setToast({ type: 'success', message: 'Class updated & synced to robot ✓' });
-                    setTimeout(() => setToast(null), 3000);
-                    await onChildUpdated?.();
-                  } catch (err: any) {
-                    setToast({ type: 'error', message: err.message || 'Failed to update class' });
-                  } finally {
-                    setIsSaving(false);
-                  }
-                }}
-                disabled={isSaving}
-                className="btn btn-primary text-xs px-4 py-1.5 min-h-[36px]"
-              >
-                Save class
-              </button>
-            </div>
-          </div>
-        )}
+        <button
+          onClick={() => onOpenChangeClass?.()}
+          className="btn btn-secondary text-xs px-3.5 py-2 min-h-[38px] gap-1.5 self-start sm:self-auto"
+        >
+          <GraduationCap className="w-3.5 h-3.5 text-[var(--brand-orange)]" />
+          <span>Change class</span>
+        </button>
       </div>
 
       {/* THEMES & APPEARANCE CARD */}
@@ -275,7 +251,7 @@ export function ControlsView({
           <div className="flex items-center gap-2">
             <Palette className="w-4 h-4 text-[var(--brand-orange)]" />
             <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-              Themes & Appearance
+              Themes &amp; Appearance
             </span>
           </div>
           <Link
@@ -393,12 +369,13 @@ export function ControlsView({
           Subjects the tutor may teach
         </div>
         <div className="flex flex-wrap gap-2">
-          {allSubjects.map((sub) => {
+          {ALL_CBSE_SUBJECTS.map((sub) => {
             const isSelected = subjects.includes(sub);
             return (
               <button
                 key={sub}
                 onClick={() => handleToggleSubject(sub)}
+                disabled={loadedChildId !== childId}
                 className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all flex items-center gap-1.5 ${
                   isSelected
                     ? 'bg-[var(--brand-orange)] text-white border-[var(--brand-orange)]'
@@ -415,7 +392,6 @@ export function ControlsView({
 
       {/* Toggles */}
       <div className="card p-5 space-y-4">
-        {/* Syllabus */}
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="text-sm font-semibold text-[var(--text-primary)]">Stay on the syllabus</div>
@@ -436,7 +412,6 @@ export function ControlsView({
 
         <div className="border-t border-[var(--border-card)]" />
 
-        {/* Camera */}
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="text-sm font-semibold text-[var(--text-primary)]">Camera for written exams</div>
@@ -457,12 +432,11 @@ export function ControlsView({
 
         <div className="border-t border-[var(--border-card)]" />
 
-        {/* Break prompts */}
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="text-sm font-semibold text-[var(--text-primary)]">Break prompts</div>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">
-              “Feeling sleepy?” if Arjun goes very still. No scoring.
+              “Feeling sleepy?” if {childName} goes very still. No scoring.
             </p>
           </div>
           <input
@@ -478,7 +452,6 @@ export function ControlsView({
 
         <div className="border-t border-[var(--border-card)]" />
 
-        {/* Keep Photos */}
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="text-sm font-semibold text-[var(--text-primary)]">Keep answer photos</div>
@@ -632,7 +605,7 @@ export function ControlsView({
           />
           <button
             onClick={() => triggerAutoSave({ parent_pin: pin })}
-            disabled={pin.length !== 4}
+            disabled={pin.length !== 4 || isSaving}
             className="btn btn-secondary text-xs px-4 disabled:opacity-50"
           >
             Save PIN
@@ -642,6 +615,54 @@ export function ControlsView({
           Placeholder for firmware parental lock features.
         </p>
       </div>
+
+      {/* Remove Student */}
+      {canRemoveStudent && (
+        <div className="card p-5 flex items-center justify-between gap-4 border-[var(--error-red)]/20">
+          <div>
+            <div className="text-sm font-semibold text-[var(--text-primary)]">Remove student</div>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+              Archive {childName}’s profile and hide it from student lists.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowRemoveModal(true)}
+            className="btn btn-secondary text-xs text-[var(--error-red)] border-[var(--error-red)]/30 hover:bg-[var(--error-red)]/10 px-3.5 py-2 min-h-[38px] gap-1.5 shrink-0"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Remove student</span>
+          </button>
+        </div>
+      )}
+
+      {/* Confirm Remove Student Modal */}
+      {showRemoveModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-card)] border border-[var(--border-card)] rounded-2xl p-6 max-w-sm w-full space-y-4 shadow-xl">
+            <h3 className="text-base font-bold text-[var(--text-primary)]">
+              Remove {childName}?
+            </h3>
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+              This archives {childName} and hides them from all student lists. If a robot is currently paired to {childName}, you’ll need to move the robot to another student on Devices first.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setShowRemoveModal(false)}
+                className="btn btn-secondary text-xs px-4"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRemoveStudent}
+                disabled={removing}
+                className="btn bg-[var(--error-red)] text-white text-xs px-4 disabled:opacity-50"
+              >
+                {removing ? 'Removing...' : 'Remove student'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

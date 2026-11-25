@@ -15,9 +15,10 @@ interface ChildOption {
 interface DevicesViewProps {
   childrenList?: ChildOption[];
   onRefresh?: () => void;
+  onOpenChangeClass?: () => void;
 }
 
-export function DevicesView({ childrenList = [], onRefresh }: DevicesViewProps) {
+export function DevicesView({ childrenList = [], onRefresh, onOpenChangeClass }: DevicesViewProps) {
   const [sayText, setSayText] = useState('');
   const [showSayModal, setShowSayModal] = useState(false);
   const [showUnpairModal, setShowUnpairModal] = useState(false);
@@ -185,8 +186,22 @@ export function DevicesView({ childrenList = [], onRefresh }: DevicesViewProps) 
                     {deviceData?.device_uid || 'DUDU-90932C9FC114'}
                   </span>
                 </div>
-                <div className="text-xs text-[var(--text-muted)] mt-0.5">
-                  Paired to: <strong className="text-[var(--text-primary)]">{deviceData?.child_name || 'Arjun'}</strong> (Class {deviceData?.child_class || 3})
+                <div className="text-xs text-[var(--text-muted)] mt-0.5 flex items-center gap-1.5 flex-wrap">
+                  <span>
+                    Paired to: <strong className="text-[var(--text-primary)]">{deviceData?.child_name || 'Arjun'}</strong> (Class {deviceData?.child_class || 3})
+                  </span>
+                  {onOpenChangeClass && (
+                    <>
+                      <span>·</span>
+                      <button
+                        type="button"
+                        onClick={onOpenChangeClass}
+                        className="text-[var(--brand-orange)] font-semibold hover:underline"
+                      >
+                        Change class
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

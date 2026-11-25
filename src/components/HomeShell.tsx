@@ -14,6 +14,8 @@ import { DevicesView } from '@/components/views/DevicesView';
 import { DesktopDashboardView } from '@/components/views/DesktopDashboardView';
 import { SignInView } from '@/components/views/SignInView';
 import { AddChildModal } from '@/components/modals/AddChildModal';
+import { ChangeClassModal } from '@/components/modals/ChangeClassModal';
+import { useTheme } from '@/context/ThemeContext';
 import { DashboardData } from '@/lib/dashboard-types';
 import { Loader2 } from 'lucide-react';
 
@@ -36,6 +38,7 @@ const REQUIRE_LOGIN = process.env.NEXT_PUBLIC_REQUIRE_LOGIN === 'true';
 const DEFAULT_CHILD_ID = '22222222-2222-2222-2222-222222222222';
 
 export function HomeShell({ initialTab }: HomeShellProps) {
+  const { applyParentTheme, applyRobotTheme } = useTheme();
   const [activeTab, setActiveTabState] = useState<string>(initialTab || 'today');
   const [selectedChildId, setSelectedChildId] = useState<string>(DEFAULT_CHILD_ID);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
@@ -43,6 +46,7 @@ export function HomeShell({ initialTab }: HomeShellProps) {
   const [isAuthenticated, setIsAuthenticated] = useState(!REQUIRE_LOGIN);
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [showAddChildModal, setShowAddChildModal] = useState(false);
+  const [showChangeClassModal, setShowChangeClassModal] = useState(false);
 
   // Restore ?tab= and saved selectedChildId on mount
   useEffect(() => {
@@ -78,6 +82,9 @@ export function HomeShell({ initialTab }: HomeShellProps) {
           const data: DashboardData = await res.json();
           setDashboard(data);
           setIsAuthenticated(true);
+          // Read-only UI theme sync when loading or switching child (never writes back)
+          if (data.settings?.theme) applyParentTheme(data.settings.theme);
+          if (data.settings?.robot_theme) applyRobotTheme(data.settings.robot_theme);
         }
       } catch {
         // Network error
@@ -85,7 +92,7 @@ export function HomeShell({ initialTab }: HomeShellProps) {
         setAuthChecked(true);
       }
     },
-    [selectedChildId]
+    [selectedChildId, applyParentTheme, applyRobotTheme]
   );
 
   useEffect(() => {
@@ -215,7 +222,15 @@ export function HomeShell({ initialTab }: HomeShellProps) {
             childId={selectedChildId}
             childName={childName}
             cbseClass={cbseClass}
+            initialSettings={dashboard?.settings}
+            canRemoveStudent={childrenList.length > 1}
+            onOpenChangeClass={() => setShowChangeClassModal(true)}
             onChildUpdated={() => fetchDashboard()}
+            onChildRemoved={async () => {
+              const remaining = childrenList.filter((c) => c.id !== selectedChildId);
+              const nextId = remaining[0]?.id || DEFAULT_CHILD_ID;
+              handleSelectChild(nextId);
+            }}
           />
         );
       case 'devices':
@@ -223,6 +238,7 @@ export function HomeShell({ initialTab }: HomeShellProps) {
           <DevicesView
             childrenList={childrenList}
             onRefresh={() => fetchDashboard()}
+            onOpenChangeClass={() => setShowChangeClassModal(true)}
           />
         );
       default:
@@ -255,12 +271,17 @@ export function HomeShell({ initialTab }: HomeShellProps) {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
         <Navbar
+          childId={selectedChildId}
           childName={childName}
           cbseClass={cbseClass}
+          childrenList={childrenList}
           isOnline={isOnline}
           reviewCount={reviewCount}
           activeTab={activeTab}
           onTabChange={navigateTab}
+          onSelectChild={handleSelectChild}
+          onOpenAddChild={() => setShowAddChildModal(true)}
+          onOpenChangeClass={() => setShowChangeClassModal(true)}
           onSignOut={REQUIRE_LOGIN ? handleSignOut : undefined}
         />
 
@@ -283,6 +304,16 @@ export function HomeShell({ initialTab }: HomeShellProps) {
         onSuccess={(newChild) => {
           handleSelectChild(newChild.id);
         }}
+      />
+
+      {/* Change Class Modal */}
+      <ChangeClassModal
+        isOpen={showChangeClassModal}
+        childId={selectedChildId}
+        childName={childName}
+        cbseClass={cbseClass}
+        onClose={() => setShowChangeClassModal(false)}
+        onSuccess={() => fetchDashboard()}
       />
     </div>
   );
