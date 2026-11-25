@@ -11,7 +11,6 @@ import { ControlsView } from '@/components/views/ControlsView';
 import { ProgressView } from '@/components/views/ProgressView';
 import { SessionTranscriptView } from '@/components/views/SessionTranscriptView';
 import { DevicesView } from '@/components/views/DevicesView';
-import { OnboardingView } from '@/components/views/OnboardingView';
 import { DesktopDashboardView } from '@/components/views/DesktopDashboardView';
 import { SignInView } from '@/components/views/SignInView';
 import { AddChildModal } from '@/components/modals/AddChildModal';
@@ -30,7 +29,6 @@ const VALID_TABS = new Set([
   'controls',
   'devices',
   'sessions',
-  'onboarding',
   'transcript'
 ]);
 
@@ -225,14 +223,6 @@ export function HomeShell({ initialTab }: HomeShellProps) {
           <DevicesView
             childrenList={childrenList}
             onRefresh={() => fetchDashboard()}
-          />
-        );
-      case 'onboarding':
-        return (
-          <OnboardingView
-            childrenList={childrenList}
-            onOpenAddChild={() => setShowAddChildModal(true)}
-            onComplete={() => navigateTab('today')}
           />
         );
       default:

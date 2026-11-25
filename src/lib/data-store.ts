@@ -4,7 +4,7 @@
 import { supabaseAdmin } from './supabase/admin';
 import { getKolkataMidnightToday } from './date-utils';
 import { sha256 } from './crypto';
-import { getSubjectsForClass } from './cbse-subjects';
+import { getSubjectsForClass, getValidSubjectsForClass } from './cbse-subjects';
 
 export interface DeviceRecord {
   id: string;
@@ -271,9 +271,11 @@ function applyStatePayload(data: any): void {
   }
 }
 
-async function ensureStateLoaded(): Promise<void> {
+async function ensureStateLoaded(force: boolean = false): Promise<void> {
   const now = Date.now();
-  if (stateInitialized && now - lastSyncTime < 2000) {
+  // On Vercel serverless, always fetch fresh state from Supabase Storage unless forced skip
+  // (prevents stale per-container memory / /tmp from overwriting updates from other lambdas).
+  if (!process.env.VERCEL && !force && stateInitialized && now - lastSyncTime < 2000) {
     return;
   }
 
@@ -312,8 +314,6 @@ async function ensureStateLoaded(): Promise<void> {
     return false;
   };
 
-  // On Vercel serverless, always prefer Supabase Storage so cross-container updates
-  // (device sync last_seen, new children, class changes) are never shadowed by stale /tmp.
   if (process.env.VERCEL) {
     if (await loadSupabaseStorage()) return;
     if (await loadLocal()) return;
@@ -326,7 +326,7 @@ async function ensureStateLoaded(): Promise<void> {
   lastSyncTime = now;
 }
 
-async function persistState(): Promise<void> {
+async function persistState(throwOnStorageError: boolean = false): Promise<void> {
   const turnsObj: Record<string, TurnRecord[]> = {};
   for (const [sid, list] of memoryStore.turns.entries()) {
     turnsObj[sid] = list;
@@ -352,12 +352,19 @@ async function persistState(): Promise<void> {
     fs.writeFileSync(LOCAL_STATE_FILE, str, 'utf-8');
   } catch {}
 
+  const hasRealSupabase = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
   try {
-    await supabaseAdmin.storage.from(STATE_BUCKET).upload(STATE_OBJECT, Buffer.from(str), {
+    const { error } = await supabaseAdmin.storage.from(STATE_BUCKET).upload(STATE_OBJECT, Buffer.from(str), {
       upsert: true,
-      contentType: 'application/json'
+      contentType: 'application/json',
+      cacheControl: '0'
     });
-  } catch {}
+    if (error && throwOnStorageError && hasRealSupabase) {
+      throw new Error(`Storage persist failed: ${error.message}`);
+    }
+  } catch (err) {
+    if (throwOnStorageError && hasRealSupabase) throw err;
+  }
 
   lastSyncTime = Date.now();
 }
@@ -706,7 +713,7 @@ export const DataStore = {
     childId: string,
     updates: { name?: string; cbse_class?: number; avatar?: string }
   ): Promise<{ child: ChildRecord; settings: ChildSettingsRecord }> {
-    await ensureStateLoaded();
+    await ensureStateLoaded(true);
     const existing = memoryStore.children.get(childId);
     if (!existing) throw new Error('Child not found');
 
@@ -730,8 +737,9 @@ export const DataStore = {
         .eq('id', childId);
     } catch {}
 
-    // Reconcile subjects if class changed, and bump settings version so robot picks up child_name/child_class
-    const currentSettings = (await this.getChildSettings(childId)) || {
+    // Reconcile subjects ONLY if class changed, keeping parent's valid subjects for the new class,
+    // and bump settings.version once so robot picks up child_name/child_class.
+    const currentSettings = memoryStore.childSettings.get(childId) || {
       child_id: childId,
       subjects: getSubjectsForClass(newClass),
       stay_on_syllabus: true,
@@ -752,16 +760,27 @@ export const DataStore = {
 
     let nextSubjects = currentSettings.subjects;
     if (updates.cbse_class !== undefined && updates.cbse_class !== existing.cbse_class) {
-      const validForNewClass = getSubjectsForClass(newClass);
+      const validForNewClass = getValidSubjectsForClass(newClass);
       const kept = currentSettings.subjects.filter((s) => validForNewClass.includes(s));
-      nextSubjects = kept.length > 0 ? kept : validForNewClass;
+      nextSubjects = kept.length > 0 ? kept : getSubjectsForClass(newClass);
     }
 
-    const updatedSettings = await this.updateChildSettings(childId, {
-      subjects: nextSubjects
-    });
+    const updatedSettings: ChildSettingsRecord = {
+      ...currentSettings,
+      subjects: nextSubjects,
+      version: (currentSettings.version || 1) + 1,
+      updated_at: new Date().toISOString()
+    };
 
-    await persistState();
+    try {
+      await supabaseAdmin
+        .from('child_settings')
+        .upsert(updatedSettings)
+        .eq('child_id', childId);
+    } catch {}
+
+    memoryStore.childSettings.set(childId, updatedSettings);
+    await persistState(true);
     return { child: updatedChild, settings: updatedSettings };
   },
 

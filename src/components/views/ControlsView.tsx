@@ -186,7 +186,13 @@ export function ControlsView({
         <div className="flex items-center justify-between mt-1 text-sm text-[var(--text-muted)]">
           <span>{childName} · CBSE Class {cbseClass}</span>
           <button
-            onClick={() => setShowClassEditor(!showClassEditor)}
+            onClick={() => {
+              if (!showClassEditor) {
+                setEditName(childName);
+                setEditClass(cbseClass);
+              }
+              setShowClassEditor(!showClassEditor);
+            }}
             className="text-[var(--brand-orange)] font-medium hover:underline text-xs"
           >
             {showClassEditor ? 'Close' : 'Change class'}
@@ -246,7 +252,7 @@ export function ControlsView({
                     setShowClassEditor(false);
                     setToast({ type: 'success', message: 'Class updated & synced to robot ✓' });
                     setTimeout(() => setToast(null), 3000);
-                    onChildUpdated?.();
+                    await onChildUpdated?.();
                   } catch (err: any) {
                     setToast({ type: 'error', message: err.message || 'Failed to update class' });
                   } finally {

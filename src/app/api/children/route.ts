@@ -95,11 +95,18 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 403 });
   }
 
-  const { child, settings } = await DataStore.updateChild(parsed.data.child_id, {
-    name: parsed.data.name,
-    cbse_class: parsed.data.cbse_class,
-    avatar: parsed.data.avatar
-  });
+  try {
+    const { child, settings } = await DataStore.updateChild(parsed.data.child_id, {
+      name: parsed.data.name,
+      cbse_class: parsed.data.cbse_class,
+      avatar: parsed.data.avatar
+    });
 
-  return NextResponse.json({ success: true, child, settings });
+    return NextResponse.json({ success: true, child, settings });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: 'update_failed', message: err.message || 'Failed to update child' },
+      { status: err.message === 'Child not found' ? 404 : 500 }
+    );
+  }
 }
