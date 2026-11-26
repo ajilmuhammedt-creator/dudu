@@ -1,6 +1,7 @@
 // src/app/api/cron/cleanup/route.ts
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { DataStore } from '@/lib/data-store';
 
 export async function GET() {
   const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
@@ -8,6 +9,8 @@ export async function GET() {
   let purgedCount = 0;
 
   try {
+    // 0. Camera photos older than 7 days
+    purgedCount += await DataStore.purgeExpiredCameraPhotos();
     // 1. Photos older than 30 days
     const { data: expiredPhotos } = await supabaseAdmin
       .from('photos')

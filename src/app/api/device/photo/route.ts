@@ -23,9 +23,40 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'file_too_large', max_bytes: 1048576 }, { status: 413 });
   }
 
+  const kind = req.nextUrl.searchParams.get('kind') || 'scan';
+  const cmdIdParam = req.nextUrl.searchParams.get('cmd_id');
+  const cmdId = cmdIdParam ? Number(cmdIdParam) || null : null;
+
   const photoId = crypto.randomUUID();
   const familyId = device.family_id || 'unpaired';
   const childId = device.child_id || 'unpaired';
+
+  if (kind === 'camera') {
+    const objectPath = `camera/${familyId}/${device.id}/${photoId}.jpg`;
+    try {
+      await supabaseAdmin.storage
+        .from('answer-photos')
+        .upload(objectPath, Buffer.from(arrayBuffer), {
+          contentType: 'image/jpeg',
+          upsert: true
+        });
+    } catch {
+      // Tolerant storage upload in dev
+    }
+
+    await DataStore.saveCameraPhoto({
+      id: photoId,
+      device_id: device.id,
+      child_id: device.child_id,
+      family_id: device.family_id,
+      cmd_id: cmdId,
+      storage_bucket: 'answer-photos',
+      storage_path: objectPath
+    });
+
+    return NextResponse.json({ photo_id: photoId });
+  }
+
   const storagePath = `answer-photos/${familyId}/${childId}/${photoId}.jpg`;
 
   try {

@@ -512,4 +512,120 @@ describe('Device API Contract Tests', () => {
     );
     expect(remaining).toHaveLength(0);
   });
+
+  it('supports Camera & Face commands, watching fast_poll_s, camera photo upload/delete, and photo_error', async () => {
+    const { POST: commandsPost } = await import('@/app/api/commands/route');
+    const { POST: syncPost } = await import('@/app/api/device/sync/route');
+    const { POST: watchingPost } = await import('@/app/api/devices/[id]/watching/route');
+    const { POST: photoPost } = await import('@/app/api/device/photo/route');
+    const { GET: photosGet, DELETE: photosDelete } = await import('@/app/api/devices/[id]/photos/route');
+
+    const deviceId = '33333333-3333-3333-3333-333333333333';
+
+    // 1. Watching endpoint enables fast_poll_s on sync
+    const watchRes = await watchingPost(
+      new NextRequest(`http://localhost:3000/api/devices/${deviceId}/watching`, { method: 'POST' }),
+      { params: Promise.resolve({ id: deviceId }) }
+    );
+    expect(watchRes.status).toBe(200);
+
+    // 2. Queue face command
+    const faceCmdRes = await commandsPost(
+      new NextRequest('http://localhost:3000/api/commands', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_id: deviceId, type: 'face', arg: 'happy|10' })
+      })
+    );
+    expect(faceCmdRes.status).toBe(200);
+    const faceCmdData = await faceCmdRes.json();
+    expect(faceCmdData.command.type).toBe('face');
+    expect(faceCmdData.command.arg).toBe('happy|10');
+
+    // 3. Sync receives face command, fast_poll_s, and reports face: 'happy'
+    const syncRes1 = await syncPost(
+      new NextRequest('http://localhost:3000/api/device/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer DUDU-90932C9FC114'
+        },
+        body: JSON.stringify({ firmware: '1.1', face: 'happy' })
+      })
+    );
+    expect(syncRes1.status).toBe(200);
+    const syncData1 = await syncRes1.json();
+    expect(syncData1.fast_poll_s).toBeGreaterThan(0);
+    expect(syncData1.fast_poll_s).toBeLessThanOrEqual(120);
+    expect(syncData1.cmd_type).toBe('face');
+    expect(syncData1.cmd_arg).toBe('happy|10');
+
+    // 4. Queue photo command
+    const photoCmdRes = await commandsPost(
+      new NextRequest('http://localhost:3000/api/commands', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_id: deviceId, type: 'photo', arg: '' })
+      })
+    );
+    expect(photoCmdRes.status).toBe(200);
+    const photoCmdId = (await photoCmdRes.json()).command.id;
+
+    // 5. Device uploads camera photo with ?kind=camera&cmd_id=<id>
+    const uploadRes = await photoPost(
+      new NextRequest(`http://localhost:3000/api/device/photo?kind=camera&cmd_id=${photoCmdId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'image/jpeg',
+          Authorization: 'Bearer DUDU-90932C9FC114'
+        },
+        body: new Uint8Array([0xff, 0xd8, 0xff, 0xd9])
+      })
+    );
+    expect(uploadRes.status).toBe(200);
+    const { photo_id } = await uploadRes.json();
+    expect(photo_id).toBeTruthy();
+
+    // 6. GET /api/devices/[id]/photos?cmd_id=<id> returns the camera photo
+    const listRes = await photosGet(
+      new NextRequest(`http://localhost:3000/api/devices/${deviceId}/photos?cmd_id=${photoCmdId}`),
+      { params: Promise.resolve({ id: deviceId }) }
+    );
+    expect(listRes.status).toBe(200);
+    const listData = await listRes.json();
+    expect(listData.photos.some((p: any) => p.id === photo_id && p.cmd_id === photoCmdId)).toBe(true);
+
+    // 7. Delete the camera photo
+    const delRes = await photosDelete(
+      new NextRequest(`http://localhost:3000/api/devices/${deviceId}/photos?photo_id=${photo_id}`, {
+        method: 'DELETE'
+      }),
+      { params: Promise.resolve({ id: deviceId }) }
+    );
+    expect(delRes.status).toBe(200);
+
+    // 8. Sync reporting photo_error records it for polling
+    await syncPost(
+      new NextRequest('http://localhost:3000/api/device/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer DUDU-90932C9FC114'
+        },
+        body: JSON.stringify({
+          firmware: '1.1',
+          photo_cmd: photoCmdId + 1,
+          photo_id: '',
+          photo_error: 'camera busy'
+        })
+      })
+    );
+    const errList = await (
+      await photosGet(
+        new NextRequest(`http://localhost:3000/api/devices/${deviceId}/photos?cmd_id=${photoCmdId + 1}`),
+        { params: Promise.resolve({ id: deviceId }) }
+      )
+    ).json();
+    expect(errList.cmd_status?.photo_error).toBe('camera busy');
+  });
 });

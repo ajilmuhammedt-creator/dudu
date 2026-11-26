@@ -31,6 +31,7 @@ export async function GET() {
     ip: device.ip,
     rssi: device.rssi,
     pairing_code: device.pairing_code,
+    face: device.face || 'idle',
     last_seen: device.last_seen
   });
 }

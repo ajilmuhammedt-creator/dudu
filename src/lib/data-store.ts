@@ -20,6 +20,8 @@ export interface DeviceRecord {
   rssi: number | null;
   ip: string | null;
   settings_version_acked: number;
+  face?: string | null;
+  watching_until?: string | null;
   created_at: string;
 }
 
@@ -112,12 +114,31 @@ export interface GradeRecord {
 export interface CommandRecord {
   id: number;
   device_id: string;
-  type: 'say' | 'practice' | 'rewrite' | 'music' | 'unpair' | 'refresh';
+  type: 'say' | 'practice' | 'rewrite' | 'music' | 'unpair' | 'refresh' | 'face' | 'photo';
   arg: string;
   status: 'pending' | 'sent' | 'done' | 'expired';
   created_by?: string | null;
   created_at: string;
   acked_at?: string | null;
+}
+
+export interface CameraPhotoRecord {
+  id: string;
+  device_id: string;
+  child_id: string | null;
+  family_id: string | null;
+  cmd_id: number | null;
+  storage_bucket: string;
+  storage_path: string;
+  created_at: string;
+}
+
+export interface PhotoCommandStatus {
+  cmd_id: number;
+  device_id: string;
+  photo_id: string | null;
+  photo_error: string | null;
+  updated_at: string;
 }
 
 export interface EventRecord {
@@ -142,6 +163,8 @@ class MemoryStore {
   commands: CommandRecord[] = [];
   events: EventRecord[] = [];
   flags: Array<{ turn_id: number; user_id: string; reason: string; session_id?: string }> = [];
+  cameraPhotos: CameraPhotoRecord[] = [];
+  photoStatuses: PhotoCommandStatus[] = [];
   nextCommandId = 100;
   nextTurnId = 1000;
   nextEventId = 500;
@@ -219,15 +242,16 @@ const STATE_BUCKET = 'dudu-state';
 const STATE_OBJECT = 'device-state.json';
 const LOCAL_STATE_FILE = '/tmp/dudu-device-state.json';
 
-type StateDomain = 'children' | 'settings' | 'devices' | 'sessions' | 'commands' | 'flags';
-const ALL_DOMAINS: StateDomain[] = ['children', 'settings', 'devices', 'sessions', 'commands', 'flags'];
+type StateDomain = 'children' | 'settings' | 'devices' | 'sessions' | 'commands' | 'flags' | 'photos';
+const ALL_DOMAINS: StateDomain[] = ['children', 'settings', 'devices', 'sessions', 'commands', 'flags', 'photos'];
 const DOMAIN_OBJECTS: Record<StateDomain, string> = {
   children: 'children.json',
   settings: 'settings.json',
   devices: 'devices.json',
   sessions: 'sessions.json',
   commands: 'commands.json',
-  flags: 'flags.json'
+  flags: 'flags.json',
+  photos: 'photos.json'
 };
 const LOCAL_DOMAIN_FILES: Record<StateDomain, string> = {
   children: '/tmp/dudu-state-children.json',
@@ -235,7 +259,8 @@ const LOCAL_DOMAIN_FILES: Record<StateDomain, string> = {
   devices: '/tmp/dudu-state-devices.json',
   sessions: '/tmp/dudu-state-sessions.json',
   commands: '/tmp/dudu-state-commands.json',
-  flags: '/tmp/dudu-state-flags.json'
+  flags: '/tmp/dudu-state-flags.json',
+  photos: '/tmp/dudu-state-photos.json'
 };
 
 let stateInitialized = false;
@@ -296,6 +321,12 @@ function applyStatePayload(data: any): void {
   if (Array.isArray(data.flags)) {
     memoryStore.flags = data.flags;
   }
+  if (Array.isArray(data.cameraPhotos)) {
+    memoryStore.cameraPhotos = data.cameraPhotos;
+  }
+  if (Array.isArray(data.photoStatuses)) {
+    memoryStore.photoStatuses = data.photoStatuses;
+  }
 }
 
 function buildDomainPayload(domain: StateDomain): Record<string, any> {
@@ -327,6 +358,12 @@ function buildDomainPayload(domain: StateDomain): Record<string, any> {
         flags: memoryStore.flags,
         updated_at
       };
+    case 'photos':
+      return {
+        cameraPhotos: memoryStore.cameraPhotos,
+        photoStatuses: memoryStore.photoStatuses,
+        updated_at
+      };
     case 'sessions': {
       const turnsObj: Record<string, TurnRecord[]> = {};
       for (const [sid, list] of memoryStore.turns.entries()) {
@@ -343,11 +380,14 @@ function buildDomainPayload(domain: StateDomain): Record<string, any> {
   }
 }
 
-async function ensureStateLoaded(force: boolean = false): Promise<void> {
+async function ensureStateLoaded(
+  force: boolean = false,
+  domains: StateDomain[] = ALL_DOMAINS
+): Promise<void> {
   const now = Date.now();
-  // On Vercel serverless, always fetch fresh state from Supabase Storage unless forced skip
-  // (prevents stale per-container memory / /tmp from overwriting updates from other lambdas).
-  if (!process.env.VERCEL && !force && stateInitialized && now - lastSyncTime < 2000) {
+  // Reuse within the same request (400ms on Vercel, 2000ms locally) unless forced
+  const ttl = process.env.VERCEL ? 400 : 2000;
+  if (!force && stateInitialized && now - lastSyncTime < ttl) {
     return;
   }
 
@@ -360,7 +400,7 @@ async function ensureStateLoaded(force: boolean = false): Promise<void> {
         applyStatePayload(JSON.parse(content));
         loadedAny = true;
       }
-      for (const domain of ALL_DOMAINS) {
+      for (const domain of domains) {
         const file = LOCAL_DOMAIN_FILES[domain];
         if (fs.existsSync(file)) {
           const content = fs.readFileSync(file, 'utf-8');
@@ -412,7 +452,7 @@ async function ensureStateLoaded(force: boolean = false): Promise<void> {
   const loadSupabaseStorage = async () => {
     try {
       const domainResults = await Promise.all(
-        ALL_DOMAINS.map(async (domain) => {
+        domains.map(async (domain) => {
           try {
             const text = await downloadStorageText(DOMAIN_OBJECTS[domain]);
             if (text) {
@@ -712,6 +752,24 @@ export const DataStore = {
     return updated;
   },
 
+  async preloadForSync(): Promise<void> {
+    await ensureStateLoaded(true, ['devices', 'children', 'settings', 'commands', 'sessions']);
+  },
+
+  async setDeviceWatching(deviceId: string, seconds: number = 120): Promise<string> {
+    await ensureStateLoaded(true, ['devices']);
+    const d = memoryStore.devices.get(deviceId) || (await this.getDeviceByUid('DUDU-90932C9FC114'));
+    if (!d) throw new Error('Device not found');
+    const watchingUntil = new Date(Date.now() + seconds * 1000).toISOString();
+    const updated: DeviceRecord = {
+      ...d,
+      watching_until: watchingUntil
+    };
+    memoryStore.devices.set(d.id, updated);
+    await persistDomains(['devices']);
+    return watchingUntil;
+  },
+
   async updateDeviceSync(
     deviceId: string,
     updates: {
@@ -721,9 +779,10 @@ export const DataStore = {
       settings_version?: number;
       pairing_code?: string;
       pairing_code_expires?: string;
+      face?: string;
     }
   ): Promise<DeviceRecord> {
-    await ensureStateLoaded(true);
+    await ensureStateLoaded(false, ['devices']);
     const d = memoryStore.devices.get(deviceId) || (await this.getDeviceByUid('DUDU-90932C9FC114'));
     if (!d) throw new Error('Device not found');
 
@@ -735,6 +794,7 @@ export const DataStore = {
       settings_version_acked: updates.settings_version || d.settings_version_acked,
       pairing_code: updates.pairing_code !== undefined ? updates.pairing_code : d.pairing_code,
       pairing_code_expires: updates.pairing_code_expires !== undefined ? updates.pairing_code_expires : d.pairing_code_expires,
+      face: updates.face ? updates.face : d.face,
       last_seen: new Date().toISOString()
     };
 
@@ -1111,7 +1171,7 @@ export const DataStore = {
   },
 
   async getOldestPendingCommand(deviceId: string): Promise<CommandRecord | null> {
-    await ensureStateLoaded(true);
+    await ensureStateLoaded(false, ['commands']);
     const now = Date.now();
     const expiryThreshold = now - 24 * 3600 * 1000;
 
@@ -1154,7 +1214,7 @@ export const DataStore = {
 
   async ackCommand(cmdId: number): Promise<void> {
     if (cmdId <= 0) return;
-    await ensureStateLoaded(true);
+    await ensureStateLoaded(false, ['commands']);
 
     let changed = false;
     for (const cmd of memoryStore.commands) {
@@ -1179,7 +1239,7 @@ export const DataStore = {
 
   async createCommand(
     deviceId: string,
-    type: 'say' | 'practice' | 'rewrite' | 'music' | 'unpair' | 'refresh',
+    type: 'say' | 'practice' | 'rewrite' | 'music' | 'unpair' | 'refresh' | 'face' | 'photo',
     arg: string,
     createdBy?: string
   ): Promise<CommandRecord> {
@@ -1235,6 +1295,134 @@ export const DataStore = {
       });
     } catch {}
     return photoId;
+  },
+
+  async saveCameraPhoto(input: {
+    id?: string;
+    device_id: string;
+    child_id: string | null;
+    family_id: string | null;
+    cmd_id: number | null;
+    storage_bucket: string;
+    storage_path: string;
+  }): Promise<CameraPhotoRecord> {
+    await ensureStateLoaded(true, ['photos']);
+    const record: CameraPhotoRecord = {
+      id: input.id || crypto.randomUUID(),
+      device_id: input.device_id,
+      child_id: input.child_id,
+      family_id: input.family_id,
+      cmd_id: input.cmd_id,
+      storage_bucket: input.storage_bucket,
+      storage_path: input.storage_path,
+      created_at: new Date().toISOString()
+    };
+    memoryStore.cameraPhotos.unshift(record);
+    if (record.cmd_id) {
+      const idx = memoryStore.photoStatuses.findIndex(
+        (s) => s.device_id === record.device_id && s.cmd_id === record.cmd_id
+      );
+      const statusEntry: PhotoCommandStatus = {
+        cmd_id: record.cmd_id,
+        device_id: record.device_id,
+        photo_id: record.id,
+        photo_error: null,
+        updated_at: record.created_at
+      };
+      if (idx >= 0) memoryStore.photoStatuses[idx] = statusEntry;
+      else memoryStore.photoStatuses.unshift(statusEntry);
+    }
+    await persistDomains(['photos'], true);
+    return record;
+  },
+
+  async recordPhotoStatus(
+    deviceId: string,
+    cmdId: number,
+    photoId: string | null,
+    photoError: string | null
+  ): Promise<void> {
+    if (cmdId <= 0) return;
+    await ensureStateLoaded(true, ['photos']);
+    const idx = memoryStore.photoStatuses.findIndex(
+      (s) => s.device_id === deviceId && s.cmd_id === cmdId
+    );
+    const statusEntry: PhotoCommandStatus = {
+      cmd_id: cmdId,
+      device_id: deviceId,
+      photo_id: photoId,
+      photo_error: photoError,
+      updated_at: new Date().toISOString()
+    };
+    if (idx >= 0) {
+      memoryStore.photoStatuses[idx] = {
+        ...memoryStore.photoStatuses[idx],
+        photo_id: photoId || memoryStore.photoStatuses[idx].photo_id,
+        photo_error: photoError,
+        updated_at: statusEntry.updated_at
+      };
+    } else {
+      memoryStore.photoStatuses.unshift(statusEntry);
+      if (memoryStore.photoStatuses.length > 50) {
+        memoryStore.photoStatuses = memoryStore.photoStatuses.slice(0, 50);
+      }
+    }
+    await persistDomains(['photos']);
+  },
+
+  async getPhotoCommandStatus(deviceId: string, cmdId: number): Promise<PhotoCommandStatus | null> {
+    await ensureStateLoaded(true, ['photos']);
+    return (
+      memoryStore.photoStatuses.find((s) => s.device_id === deviceId && s.cmd_id === cmdId) || null
+    );
+  },
+
+  async purgeExpiredCameraPhotos(): Promise<number> {
+    await ensureStateLoaded(true, ['photos']);
+    const cutoff = Date.now() - 7 * 86400_000;
+    const expired = memoryStore.cameraPhotos.filter(
+      (p) => new Date(p.created_at).getTime() < cutoff
+    );
+    if (expired.length === 0) return 0;
+
+    const byBucket = new Map<string, string[]>();
+    for (const p of expired) {
+      const list = byBucket.get(p.storage_bucket) || [];
+      list.push(p.storage_path);
+      byBucket.set(p.storage_bucket, list);
+    }
+    for (const [bucket, paths] of byBucket.entries()) {
+      try {
+        await supabaseAdmin.storage.from(bucket).remove(paths);
+      } catch {}
+    }
+
+    const expiredIds = new Set(expired.map((p) => p.id));
+    memoryStore.cameraPhotos = memoryStore.cameraPhotos.filter((p) => !expiredIds.has(p.id));
+    await persistDomains(['photos']);
+    return expired.length;
+  },
+
+  async getCameraPhotos(deviceId: string, limit: number = 6): Promise<CameraPhotoRecord[]> {
+    await this.purgeExpiredCameraPhotos();
+    return memoryStore.cameraPhotos
+      .filter((p) => p.device_id === deviceId)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, limit);
+  },
+
+  async deleteCameraPhoto(deviceId: string, photoId: string): Promise<CameraPhotoRecord | null> {
+    await ensureStateLoaded(true, ['photos']);
+    const idx = memoryStore.cameraPhotos.findIndex(
+      (p) => p.id === photoId && p.device_id === deviceId
+    );
+    if (idx < 0) return null;
+    const [removed] = memoryStore.cameraPhotos.splice(idx, 1);
+    try {
+      await supabaseAdmin.storage.from(removed.storage_bucket).remove([removed.storage_path]);
+    } catch {}
+    await persistDomains(['photos'], true);
+    return removed;
   },
 
   async createSession(

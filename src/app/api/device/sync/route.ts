@@ -15,7 +15,11 @@ const syncSchema = z.object({
   ack_cmd: z.number().optional().default(0),
   usage_today_min: z.number().optional().default(0),
   mode: z.string().optional().default(''),
-  busy: z.boolean().optional().default(false)
+  busy: z.boolean().optional().default(false),
+  face: z.string().optional().default(''),
+  photo_cmd: z.number().optional().default(0),
+  photo_id: z.string().optional().default(''),
+  photo_error: z.string().optional().default('')
 });
 
 export async function POST(req: NextRequest) {
@@ -25,6 +29,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { device } = auth;
+  await DataStore.preloadForSync();
 
   let body: any = {};
   try {
@@ -40,6 +45,21 @@ export async function POST(req: NextRequest) {
   if (data.ack_cmd > 0) {
     await DataStore.ackCommand(data.ack_cmd);
   }
+
+  // Record photo command result if reported by robot
+  if (data.photo_cmd > 0 && (data.photo_id || data.photo_error)) {
+    await DataStore.recordPhotoStatus(
+      device.id,
+      data.photo_cmd,
+      data.photo_id || null,
+      data.photo_error || null
+    );
+  }
+
+  // Compute fast_poll_s if parent is actively watching
+  const fastPollS = device.watching_until
+    ? Math.max(0, Math.floor((new Date(device.watching_until).getTime() - Date.now()) / 1000))
+    : 0;
 
   // 2. Check pairing status
   const isPaired = Boolean(device.family_id && device.child_id);
@@ -58,13 +78,15 @@ export async function POST(req: NextRequest) {
         rssi: data.rssi,
         ip: data.ip,
         pairing_code: activeCode,
-        pairing_code_expires: expires
+        pairing_code_expires: expires,
+        face: data.face || undefined
       });
     } else {
       await DataStore.updateDeviceSync(device.id, {
         firmware: data.firmware,
         rssi: data.rssi,
-        ip: data.ip
+        ip: data.ip,
+        face: data.face || undefined
       });
     }
 
@@ -72,7 +94,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       paired: false,
       pairing_code: activeCode,
-      server_time: serverTime
+      server_time: serverTime,
+      ...(fastPollS > 0 ? { fast_poll_s: fastPollS } : {})
     });
   }
 
@@ -81,7 +104,8 @@ export async function POST(req: NextRequest) {
     firmware: data.firmware,
     rssi: data.rssi,
     ip: data.ip,
-    settings_version: data.settings_version
+    settings_version: data.settings_version,
+    face: data.face || undefined
   });
 
   const child = await DataStore.getChildById(device.child_id!);
@@ -112,6 +136,7 @@ export async function POST(req: NextRequest) {
     usage_today_min: usageTodayMin,
     cmd_id: pendingCmd ? pendingCmd.id : 0,
     cmd_type: pendingCmd ? pendingCmd.type : '',
-    cmd_arg: pendingCmd ? pendingCmd.arg : ''
+    cmd_arg: pendingCmd ? pendingCmd.arg : '',
+    ...(fastPollS > 0 ? { fast_poll_s: fastPollS } : {})
   });
 }

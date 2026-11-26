@@ -1,9 +1,46 @@
 // src/components/views/DevicesView.tsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Cpu, Wifi, MessageSquare, Unlink, Check, Volume2, Edit2, Plus, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  Cpu,
+  Wifi,
+  Unlink,
+  Check,
+  Volume2,
+  Edit2,
+  Plus,
+  Loader2,
+  Camera,
+  Smile,
+  Download,
+  Trash2
+} from 'lucide-react';
 import { PairRobotModal } from '../modals/PairRobotModal';
+
+const FACE_OPTIONS = [
+  { id: 'happy', emoji: '😊', label: 'Happy' },
+  { id: 'excited', emoji: '🤩', label: 'Excited' },
+  { id: 'love', emoji: '🥰', label: 'Love' },
+  { id: 'proud', emoji: '🏆', label: 'Proud' },
+  { id: 'correct', emoji: '✅', label: 'Correct' },
+  { id: 'surprised', emoji: '😮', label: 'Surprised' },
+  { id: 'thinking', emoji: '🤔', label: 'Thinking' },
+  { id: 'focus', emoji: '🎯', label: 'Focus' },
+  { id: 'sad', emoji: '😢', label: 'Sad' },
+  { id: 'grumpy', emoji: '😠', label: 'Grumpy' },
+  { id: 'sleep', emoji: '😴', label: 'Sleep' },
+  { id: 'idle', emoji: '🙂', label: 'Normal' }
+] as const;
+
+interface CameraPhotoItem {
+  id: string;
+  device_id: string;
+  child_id: string | null;
+  cmd_id: number | null;
+  created_at: string;
+  signed_url: string;
+}
 
 interface ChildOption {
   id: string;
@@ -32,9 +69,20 @@ export function DevicesView({ childrenList = [], onRefresh, onOpenChangeClass }:
   const [children, setChildren] = useState<ChildOption[]>(childrenList);
   const [assigning, setAssigning] = useState(false);
 
-  const fetchDevice = async () => {
+  // Camera & Face state
+  const [faceDuration, setFaceDuration] = useState<'10' | '60' | '0'>('10');
+  const [faceSending, setFaceSending] = useState<string | null>(null);
+  const [faceFeedback, setFaceFeedback] = useState<string | null>(null);
+  const [cameraPhotos, setCameraPhotos] = useState<CameraPhotoItem[]>([]);
+  const [pendingPhotoCmdId, setPendingPhotoCmdId] = useState<number | null>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const [takingPhoto, setTakingPhoto] = useState(false);
+  const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null);
+  const photoPollAttemptsRef = useRef(0);
+
+  const fetchDevice = useCallback(async () => {
     try {
-      const res = await fetch('/api/device/status');
+      const res = await fetch('/api/device/status', { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         setDeviceData(data);
@@ -44,7 +92,22 @@ export function DevicesView({ childrenList = [], onRefresh, onOpenChangeClass }:
     } catch {} finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  const fetchCameraPhotos = useCallback(async (devId: string, cmdId?: number | null) => {
+    try {
+      const qs = cmdId ? `?cmd_id=${cmdId}` : '';
+      const res = await fetch(`/api/devices/${devId}/photos${qs}`, { cache: 'no-store' });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (Array.isArray(data.photos)) {
+        setCameraPhotos(data.photos);
+      }
+      return data;
+    } catch {
+      return null;
+    }
+  }, []);
 
   useEffect(() => {
     fetchDevice();
@@ -58,7 +121,164 @@ export function DevicesView({ childrenList = [], onRefresh, onOpenChangeClass }:
         })
         .catch(() => {});
     }
-  }, [childrenList]);
+  }, [childrenList, fetchDevice]);
+
+  // Watching heartbeat (every 60s while visible) + device status refresh (every 8s)
+  useEffect(() => {
+    const devId = deviceData?.id;
+    if (!devId || isUnpaired) return;
+
+    fetchCameraPhotos(devId);
+
+    const pingWatching = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      fetch(`/api/devices/${devId}/watching`, { method: 'POST' }).catch(() => {});
+    };
+
+    pingWatching();
+    const watchTimer = setInterval(pingWatching, 60000);
+    const statusTimer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchDevice();
+      }
+    }, 8000);
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        pingWatching();
+        fetchDevice();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      clearInterval(watchTimer);
+      clearInterval(statusTimer);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [deviceData?.id, isUnpaired, fetchDevice, fetchCameraPhotos]);
+
+  // Poll for pending photo every 3s for up to 2 minutes (40 attempts)
+  useEffect(() => {
+    const devId = deviceData?.id;
+    if (!devId || !pendingPhotoCmdId) return;
+
+    photoPollAttemptsRef.current = 0;
+    const timer = setInterval(async () => {
+      photoPollAttemptsRef.current += 1;
+      const data = await fetchCameraPhotos(devId, pendingPhotoCmdId);
+      if (data) {
+        const arrived = (data.photos || []).some(
+          (p: CameraPhotoItem) => p.cmd_id === pendingPhotoCmdId
+        );
+        if (arrived) {
+          setPendingPhotoCmdId(null);
+          setPhotoError(null);
+          clearInterval(timer);
+          return;
+        }
+        if (data.cmd_status?.photo_error) {
+          setPhotoError(data.cmd_status.photo_error);
+          setPendingPhotoCmdId(null);
+          clearInterval(timer);
+          return;
+        }
+      }
+      if (photoPollAttemptsRef.current >= 40) {
+        setPhotoError('Timed out waiting for DuDu to upload the photo.');
+        setPendingPhotoCmdId(null);
+        clearInterval(timer);
+      }
+    }, 3000);
+
+    return () => clearInterval(timer);
+  }, [deviceData?.id, pendingPhotoCmdId, fetchCameraPhotos]);
+
+  const handleFaceClick = async (faceId: string) => {
+    if (!deviceData?.id || !deviceData?.online) return;
+    setFaceSending(faceId);
+    setFaceFeedback(null);
+    try {
+      const res = await fetch('/api/commands', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          device_id: deviceData.id,
+          type: 'face',
+          arg: `${faceId}|${faceDuration}`
+        })
+      });
+      if (res.ok) {
+        setFaceFeedback(`Sent ${faceId} face to DuDu!`);
+        setTimeout(() => setFaceFeedback(null), 3000);
+      }
+    } catch {} finally {
+      setFaceSending(null);
+    }
+  };
+
+  const handleTakePhoto = async () => {
+    if (!deviceData?.id || !deviceData?.online || pendingPhotoCmdId) return;
+    setTakingPhoto(true);
+    setPhotoError(null);
+    try {
+      const res = await fetch('/api/commands', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          device_id: deviceData.id,
+          type: 'photo',
+          arg: ''
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.command?.id) {
+          setPendingPhotoCmdId(data.command.id);
+        }
+      } else {
+        setPhotoError('Could not queue photo command.');
+      }
+    } catch {
+      setPhotoError('Network error while requesting photo.');
+    } finally {
+      setTakingPhoto(false);
+    }
+  };
+
+  const handleDeletePhoto = async (photoId: string) => {
+    if (!deviceData?.id) return;
+    setDeletingPhotoId(photoId);
+    try {
+      const res = await fetch(
+        `/api/devices/${deviceData.id}/photos?photo_id=${encodeURIComponent(photoId)}`,
+        { method: 'DELETE' }
+      );
+      if (res.ok) {
+        setCameraPhotos((prev) => prev.filter((p) => p.id !== photoId));
+      }
+    } catch {} finally {
+      setDeletingPhotoId(null);
+    }
+  };
+
+  const handleDownloadPhoto = async (photo: CameraPhotoItem) => {
+    if (!photo.signed_url) return;
+    try {
+      const res = await fetch(photo.signed_url);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `dudu-photo-${photo.id.slice(0, 8)}.jpg`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      window.open(photo.signed_url, '_blank', 'noopener,noreferrer');
+    }
+  };
 
   const handleAssignChild = async (newChildId: string) => {
     if (!deviceData?.id) return;
@@ -153,7 +373,8 @@ export function DevicesView({ childrenList = [], onRefresh, onOpenChangeClass }:
           </button>
         </div>
       ) : (
-        /* Device Card */
+        <>
+        {/* Device Card */}
         <div className="card p-5 space-y-4">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
@@ -281,6 +502,165 @@ export function DevicesView({ childrenList = [], onRefresh, onOpenChangeClass }:
             </button>
           </div>
         </div>
+
+        {/* Camera & Face Card */}
+        <div
+          className={`card p-5 space-y-5 transition-opacity ${
+            !deviceData?.online ? 'opacity-60' : ''
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Smile className="w-5 h-5 text-[var(--brand-orange)]" />
+              <div>
+                <h3 className="text-base font-bold text-[var(--text-primary)]">Camera &amp; Face</h3>
+                <p className="text-xs text-[var(--text-muted)]">
+                  Set DuDu&rsquo;s mood face or ask DuDu to take a photo
+                </p>
+              </div>
+            </div>
+            {!deviceData?.online && (
+              <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-[var(--badge-bg)] text-[var(--text-muted)]">
+                DuDu is offline
+              </span>
+            )}
+          </div>
+
+          {/* Mood Face Buttons */}
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-[var(--text-primary)]">Mood face</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-[var(--text-muted)]">How long:</span>
+                <select
+                  disabled={!deviceData?.online}
+                  value={faceDuration}
+                  onChange={(e) => setFaceDuration(e.target.value as '10' | '60' | '0')}
+                  className="bg-[var(--input-bg)] border border-[var(--border-card)] rounded-lg px-2.5 py-1 text-xs font-semibold text-[var(--text-primary)] disabled:cursor-not-allowed"
+                >
+                  <option value="10">10 seconds</option>
+                  <option value="60">1 minute</option>
+                  <option value="0">Keep it</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+              {FACE_OPTIONS.map((f) => {
+                const isActive = (deviceData?.face || 'idle') === f.id;
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    disabled={!deviceData?.online || faceSending === f.id}
+                    onClick={() => handleFaceClick(f.id)}
+                    className={`flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-semibold border transition-all disabled:cursor-not-allowed ${
+                      isActive
+                        ? 'bg-[var(--brand-orange)]/15 border-[var(--brand-orange)] text-[var(--brand-orange)] shadow-sm'
+                        : 'bg-[var(--input-bg)] border-[var(--border-card)] text-[var(--text-primary)] hover:border-[var(--brand-orange)]/50'
+                    }`}
+                  >
+                    <span>{f.emoji}</span>
+                    <span>{f.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {faceFeedback && (
+              <div className="text-xs text-[var(--success-green)] font-medium flex items-center gap-1">
+                <Check className="w-3.5 h-3.5" /> {faceFeedback}
+              </div>
+            )}
+          </div>
+
+          {/* Take Photo Section */}
+          <div className="pt-4 border-t border-[var(--border-card)] space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="space-y-1">
+                <button
+                  type="button"
+                  disabled={!deviceData?.online || takingPhoto || pendingPhotoCmdId !== null}
+                  onClick={handleTakePhoto}
+                  className="btn btn-primary text-xs px-4 py-2.5 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {pendingPhotoCmdId !== null || takingPhoto ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Waiting for DuDu…
+                    </>
+                  ) : (
+                    <>
+                      <Camera className="w-4 h-4" />
+                      Take photo
+                    </>
+                  )}
+                </button>
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  DuDu will announce the photo and count 3-2-1 first.
+                </p>
+              </div>
+            </div>
+
+            {photoError && (
+              <div className="text-xs text-[var(--error-red)] bg-[var(--error-red)]/10 px-3 py-2 rounded-xl font-medium">
+                {photoError}
+              </div>
+            )}
+
+            {cameraPhotos.length > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-1">
+                {cameraPhotos.map((p) => (
+                  <div
+                    key={p.id}
+                    className="rounded-xl border border-[var(--border-card)] bg-[var(--input-bg)] overflow-hidden flex flex-col"
+                  >
+                    {p.signed_url ? (
+                      <img
+                        src={p.signed_url}
+                        alt="DuDu camera"
+                        className="w-full h-28 object-cover bg-black/10"
+                      />
+                    ) : (
+                      <div className="w-full h-28 flex items-center justify-center bg-black/5 text-[11px] text-[var(--text-muted)]">
+                        Photo saved
+                      </div>
+                    )}
+                    <div className="p-2 space-y-1.5">
+                      <div className="text-[10px] text-[var(--text-muted)] truncate">
+                        {new Date(p.created_at).toLocaleString('en-IN', {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={!p.signed_url}
+                          onClick={() => handleDownloadPhoto(p)}
+                          className="flex-1 flex items-center justify-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg bg-[var(--bg-card)] border border-[var(--border-card)] text-[var(--text-primary)] hover:border-[var(--brand-orange)] disabled:opacity-40"
+                        >
+                          <Download className="w-3 h-3" /> Download
+                        </button>
+                        <button
+                          type="button"
+                          disabled={deletingPhotoId === p.id}
+                          onClick={() => handleDeletePhoto(p.id)}
+                          aria-label="Delete photo"
+                          className="flex items-center justify-center p-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-card)] text-[var(--error-red)] hover:bg-[var(--error-red)]/10 disabled:opacity-40"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        </>
       )}
 
       {/* Say Something Modal */}

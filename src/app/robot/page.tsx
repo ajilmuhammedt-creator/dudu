@@ -49,6 +49,17 @@ export default function RobotScreenPage() {
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  // Watching heartbeat while Robot Screen is open
+  useEffect(() => {
+    const ping = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      fetch('/api/devices/33333333-3333-3333-3333-333333333333/watching', { method: 'POST' }).catch(() => {});
+    };
+    ping();
+    const timer = setInterval(ping, 60000);
+    return () => clearInterval(timer);
+  }, []);
+
   // Clock timer
   useEffect(() => {
     const updateTime = () => {
